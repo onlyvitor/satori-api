@@ -15,7 +15,7 @@ export class Rating {
     @Column()
     comment: string;
 
-    @Column({ enum: Status, default: Status.NOT_READ })
+    @Column({ type: 'enum', enum: Status, default: Status.NOT_READ })
     status: Status;
 
     @ManyToOne(() => User, (user) => user.ratings)
