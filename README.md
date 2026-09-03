@@ -61,7 +61,7 @@ The API will be available at `http://localhost:3000/api`.
 
 > **Sempre use `--env-file`**: o container não copia `.env`; as variáveis (`DB_*`, `JWT_SECRET`, `PORT`) devem ser injetadas.
 
-**Dockerfile:** multi-stage com `node:22-slim` (conforme solicitado), `non-root` (`appuser:appgroup`), `HEALTHCHECK` via `curl -f http://localhost:3000/api/health`.
+**Dockerfile:** multi-stage com `node:22-slim` (conforme solicitado), `non-root` (`appuser:appgroup`), `HEALTHCHECK` via `curl -f http://localhost:3000/api/health`. Detalhes e porquês em [`docs/DOCKER.md`](docs/DOCKER.md).
 
 ```bash
 # Build

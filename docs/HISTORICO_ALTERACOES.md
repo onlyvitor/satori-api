@@ -107,19 +107,59 @@ Ao final: **202 testes unitários + 98 E2E** (antes: ~190 unit + 1 E2E), infraes
 
 ---
 
-## 5. Documentação (commit atual)
+## 5. Documentação Paginação (commits `4106c62` e anteriores)
 
 - `docs/PAGINACAO.md` – documentação técnica completa (contrato, per-domínio, exemplos, validação, estrutura, decisões, commits).
-- `docs/HISTORICO_ALTERACOES.md` (este arquivo) – histórico total.
-- `README.md` – atualizados tabelas de endpoints (`?page&limit`), seção `Pagination` com exemplo `meta`, estrutura `src/common`, e seção `Tests` com comandos `db:create:test` e contagem 202/98.
+- `README.md` – atualizados tabelas de endpoints (`?page&limit`), seção `Pagination` com exemplo `meta`, estrutura `src/common`, e seção `Tests` com comandos `db:create:test` e contagem 202/98 (depois 202/100 com health).
 
 ---
 
-## 6. Estado Final Validado
+## 6. Docker – `node:22-slim` + `non-root` + `HEALTHCHECK` + `compose` (commits `7e8fb8c`, `c9e603e`, `566f966`, `9c878e1`)
+
+**Motivação:** `Dockerfile` inicial estava truncado (`RUN command`), sem multi-stage, rodava como `root`, sem healthcheck, sem `.dockerignore`, e `GET /api` protegido por `AuthGuard` impedia `HEALTHCHECK` simples.
+
+**Decisões e porquês (documentado em `docs/DOCKER.md:1`):**
+
+- **`node:22-slim` vs `alpine`:** `bcrypt 6.0.0` (`package.json:33`) é nativo e exige `python3/make/g++`. Em `alpine` (musl) precisaria `apk add` e ainda há risco `musl` vs `glibc`; `slim` (Debian glibc) é compatível nativo, `apt-get` simples, e foi explicitamente solicitado. Custo extra ~120MB compensado por build estável. Alternativa `bcryptjs` (JS puro) descartada por perder ~30% performance no hash.
+- **Multi-stage 3 estágios (`Dockerfile:1`):** `deps (npm ci com toolchain) → builder (copy + npm run build + npm prune --production) → runner (curl + appuser)` – runner leva só `dist` + `node_modules` prod (~150MB vs ~600MB single-stage).
+- **`.dockerignore` (`/.dockerignore:1`):** `node_modules`, `dist`, `.git`, `.env*`, `test`, `coverage` – contexto 597kB vs dezenas de MB.
+- **Usuário não-root (obrigatório):** `groupadd appuser/appgroup`, `chown`, `USER appuser` (`Dockerfile:20`), verificado via `docker inspect --format '{{.Config.User}}'` → `appuser`. Evita escape CIS Benchmark; `EXPOSE 3000` >1024 não precisa root.
+- **HEALTHCHECK público:** `GET /api` exige `Bearer` (`AuthGuard` `src/auth/auth.module.ts:17`), então criado `GET /api/health` público `src/app.controller.ts:13` com `@Public()` (`src/auth/decorators/public.decorator.ts:4`) e `src/app.service.ts:8` `getHealth()` → `{status:'ok', timestamp, uptime}`. `Dockerfile:25` `HEALTHCHECK curl -f http://localhost:3000/api/health` e `docker-compose.yml:32` healthcheck para `api` + `pg_isready` para `db`. `curl -f` garante falha em 4xx/5xx. Testado: `docker run --env-file .env --network host` → logs `Mapped {/api/health, GET}` + `curl` retorna `{"status":"ok"}` e `State.Health.Status=healthy`.
+- **`--env-file` sempre obrigatório:** `.env` nunca copiado (`.dockerignore` bloqueia), `env_file: - .env` em `docker-compose.yml:21` + `environment: DB_HOST=db` (sobrescreve `localhost` para rede compose). Sem `--env-file`, `TypeOrmModule` falha `Unable to connect`.
+- **`docker-compose.yml` (`docker-compose.yml:1`):** `services.db` (`postgres:16`, `POSTGRES_*`, `pgdata`, `healthcheck pg_isready`) + `services.api` (`build:.`, `env_file`, `DB_HOST=db`, `depends_on db healthy`). Atende pedido “docker compose tbm” e mantém Opção A (`db_test` criado via `npm run db:create:test` dentro da rede).
+- **Fixes para build:** `src/books/google-books.service.ts:16` tipagem `let page: number` e `src/rating/rating.service.ts:38` cast `{} as RatingPaginationDto` – necessários para `nest build` (TS2322 com `as const` literais) – commit `7e8fb8c`.
+- **Testes:** adicionado `test/health.e2e-spec.ts:1` (2 testes – health público `200` vs `/api` `401`), total E2E de 98 para 100, unit permanece 202.
+
+**Arquivos Docker:**
+- `Dockerfile` (46 linhas), `.dockerignore` (22 linhas), `docker-compose.yml` (47 linhas)
+
+**Validação:**
+```bash
+npm run build              # nest build sem TS2322
+docker build -t ratebooks:local .  # 23 steps, Successfully built
+docker run -d --name ratebooks_api --env-file .env --network host ratebooks:local
+curl http://localhost:3000/api/health  # {"status":"ok", ...}
+docker inspect --format '{{.Config.User}}' ratebooks:local  # appuser
+npm run test         # 202
+npm run test:e2e     # 100 (6 suites com health)
+```
+
+---
+
+## 7. Documentação Docker (commit `9c878e1` + este)
+
+- `docs/DOCKER.md` – documenta cada escolha com porquês e alternativas descartadas.
+- `README.md:60` – seção `Docker` com build/run/compose, `Health` público, `--env-file` obrigatório.
+- `docs/HISTORICO_ALTERACOES.md` (este arquivo) – atualizado com seção 6 completa.
+
+---
+
+## 8. Estado Final Validado
 
 ```bash
 npm run test         # 11 suites, 202 testes
-npm run test:e2e     # 5 suites, 98 testes (--runInBand, db_test isolado)
+npm run test:e2e     # 6 suites, 100 testes (--runInBand, db_test isolado, inclui health)
+docker build -t ratebooks:local .  # multi-stage slim, non-root, healthcheck ok
 ```
 
 - E2E `db_test` no mesmo container `postgres_db_legal` (Opção A), criado via `docker exec` ou `psql`.
@@ -127,7 +167,7 @@ npm run test:e2e     # 5 suites, 98 testes (--runInBand, db_test isolado)
 
 ---
 
-## 7. Comandos Úteis
+## 9. Comandos Úteis
 
 ```bash
 # Infra E2E
@@ -139,13 +179,20 @@ npm run test:e2e:docker  # cria via docker exec + roda
 curl -H "Authorization: Bearer $TOKEN" "http://localhost:3000/api/users?page=2&limit=5"
 curl -H "Authorization: Bearer $TOKEN" "http://localhost:3000/api/rating?googleBookId=zyTCAlFPjgYC&page=1&limit=1"
 curl -H "Authorization: Bearer $TOKEN" "http://localhost:3000/api/books/search?q=Harry&page=2&limit=5"
+
+# Docker
+docker build -t ratebooks:local .
+docker run -d --name ratebooks_api --env-file .env --network host ratebooks:local
+curl http://localhost:3000/api/health
+docker compose up --build -d  # se plugin instalado, senão use docker run manual para db
 ```
 
 ---
 
-## 8. Próximos Passos Sugeridos
+## 10. Próximos Passos Sugeridos
 
 - Adicionar `createdAt/updatedAt` + índices (`rating.googleBookId`, `user.email`).
 - Cache `getBookById` por página.
 - Cursor-based se volume >10k.
 - OpenAPI/Swagger para paginação.
+- Estender `GET /api/health` para checar DB (`SELECT 1`) e retornar `503` se down.
