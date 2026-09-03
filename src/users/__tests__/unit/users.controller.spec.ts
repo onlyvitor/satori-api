@@ -79,23 +79,33 @@ describe('UsersController', () => {
 
   describe('findAll', () => {
     it('should call usersService.findAll and return result', async () => {
-      const expectedResult = { success: true, data: [mockUser] };
-      mockUsersService.findAll.mockResolvedValue(expectedResult);
+      const expectedResult = { success: true, data: [mockUser], meta: { total: 1, page: 1, limit: 10, totalPages: 1, hasNextPage: false, hasPrevPage: false } };
+      mockUsersService.findAll.mockResolvedValue(expectedResult as any);
 
-      const result = await controller.findAll();
+      const paginationDto: any = { page: 1, limit: 10 };
+      const result = await controller.findAll(paginationDto);
 
-      expect(service.findAll).toHaveBeenCalledWith();
+      expect(service.findAll).toHaveBeenCalledWith(paginationDto);
       expect(service.findAll).toHaveBeenCalledTimes(1);
       expect(result).toEqual(expectedResult);
     });
 
     it('should return empty data when no users', async () => {
-      const expectedResult = { success: true, data: [] };
-      mockUsersService.findAll.mockResolvedValue(expectedResult);
+      const expectedResult = { success: true, data: [], meta: { total: 0, page: 1, limit: 10, totalPages: 1, hasNextPage: false, hasPrevPage: false } };
+      mockUsersService.findAll.mockResolvedValue(expectedResult as any);
 
-      const result = await controller.findAll();
+      const result = await controller.findAll({} as any);
 
       expect(result).toEqual(expectedResult);
+    });
+
+    it('should pass pagination query to service', async () => {
+      const paginationDto: any = { page: 2, limit: 5 };
+      mockUsersService.findAll.mockResolvedValue({ success: true, data: [], meta: {} } as any);
+
+      await controller.findAll(paginationDto);
+
+      expect(service.findAll).toHaveBeenCalledWith(paginationDto);
     });
   });
 

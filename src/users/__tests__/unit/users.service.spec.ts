@@ -37,6 +37,7 @@ describe('UsersService', () => {
   const mockRepository = {
     findOne: jest.fn(),
     find: jest.fn(),
+    findAndCount: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
     update: jest.fn(),
@@ -152,20 +153,54 @@ describe('UsersService', () => {
   describe('findAll', () => {
     it('should return object with success true and data users', async () => {
       const users = [mockUser, { ...mockUser, id: 2, email: 'jane@example.com' }];
-      mockRepository.find.mockResolvedValue(users);
+      mockRepository.findAndCount.mockResolvedValue([users, 2]);
 
       const result = await service.findAll();
 
-      expect(mockRepository.find).toHaveBeenCalledWith();
-      expect(result).toEqual({ success: true, data: users });
+      expect(mockRepository.findAndCount).toHaveBeenCalledWith({
+        order: { id: 'DESC' },
+        skip: 0,
+        take: 10,
+      });
+      expect(result).toEqual({
+        success: true,
+        data: users,
+        meta: { total: 2, page: 1, limit: 10, totalPages: 1, hasNextPage: false, hasPrevPage: false },
+      });
     });
 
     it('should return empty array when no users exist', async () => {
-      mockRepository.find.mockResolvedValue([]);
+      mockRepository.findAndCount.mockResolvedValue([[], 0]);
 
       const result = await service.findAll();
 
-      expect(result).toEqual({ success: true, data: [] });
+      expect(result).toEqual({
+        success: true,
+        data: [],
+        meta: { total: 0, page: 1, limit: 10, totalPages: 1, hasNextPage: false, hasPrevPage: false },
+      });
+    });
+
+    it('should handle pagination with custom page and limit', async () => {
+      const users = [mockUser];
+      mockRepository.findAndCount.mockResolvedValue([users, 15]);
+
+      const result = await service.findAll({ page: 2, limit: 5 } as any);
+
+      expect(mockRepository.findAndCount).toHaveBeenCalledWith({
+        order: { id: 'DESC' },
+        skip: 5,
+        take: 5,
+      });
+      expect(result.meta).toEqual({ total: 15, page: 2, limit: 5, totalPages: 3, hasNextPage: true, hasPrevPage: true });
+    });
+
+    it('should respect max limit for users (20)', async () => {
+      mockRepository.findAndCount.mockResolvedValue([[], 0]);
+      // service itself doesn't validate max, DTO does – just ensure it passes DTO values
+      const result = await service.findAll({ page: 1, limit: 20 } as any);
+      expect(mockRepository.findAndCount).toHaveBeenCalledWith(expect.objectContaining({ take: 20 }));
+      expect(result.meta.limit).toBe(20);
     });
   });
 
