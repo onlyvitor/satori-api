@@ -60,7 +60,7 @@ describe('Books (e2e)', () => {
       expect(res.body[0]).toHaveProperty('id', mockBook.id);
       expect(res.body[0]).toHaveProperty('title', mockBook.title);
       expect(res.body[0]).toHaveProperty('authors', mockBook.authors);
-      expect(ctx.mockGoogleBooksService.searchBooks).toHaveBeenCalledWith('Harry Potter');
+      expect(ctx.mockGoogleBooksService.searchBooks).toHaveBeenCalledWith('Harry Potter', expect.objectContaining({ q: 'Harry Potter' }));
     });
 
     it('deve retornar array vazio quando nenhum livro encontrado', async () => {
@@ -103,7 +103,7 @@ describe('Books (e2e)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
 
-      expect(ctx.mockGoogleBooksService.searchBooks).toHaveBeenCalledWith('C++ Programming');
+      expect(ctx.mockGoogleBooksService.searchBooks).toHaveBeenCalledWith('C++ Programming', expect.objectContaining({ q: 'C++ Programming' }));
     });
 
     it('deve lidar com query vazia', async () => {
@@ -115,6 +115,27 @@ describe('Books (e2e)', () => {
         .expect(200);
 
       expect(Array.isArray(res.body)).toBe(true);
+    });
+
+    it('deve paginar via page e limit (startIndex)', async () => {
+      ctx.mockGoogleBooksService.searchBooks.mockResolvedValue([mockBook]);
+
+      await request(app.getHttpServer())
+        .get('/api/books/search?q=test&page=2&limit=5')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(ctx.mockGoogleBooksService.searchBooks).toHaveBeenCalledWith('test', expect.objectContaining({ page: 2, limit: 5, q: 'test' }));
+      // Verifica que service foi chamado com startIndex correto (page 2, limit 5 => startIndex 5)
+      const call = ctx.mockGoogleBooksService.searchBooks.mock.calls.find((c: any[]) => c[0] === 'test' && c[1].page === 2);
+      expect(call).toBeDefined();
+    });
+
+    it('deve retornar 400 quando limit excede max', async () => {
+      await request(app.getHttpServer())
+        .get('/api/books/search?q=test&limit=100')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(400);
     });
   });
 

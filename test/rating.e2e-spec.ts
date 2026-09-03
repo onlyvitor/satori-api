@@ -193,39 +193,46 @@ describe('Rating (e2e)', () => {
       await request(app.getHttpServer()).get('/api/rating').expect(401);
     });
 
-    it('deve listar todos ratings com book enriquecido', async () => {
+    it('deve listar todos ratings com book enriquecido (paginado)', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/rating')
         .set('Authorization', `Bearer ${johnTokens.accessToken}`)
         .expect(200);
 
-      expect(Array.isArray(res.body)).toBe(true);
-      expect(res.body).toHaveLength(2);
+      expect(res.body).toHaveProperty('data');
+      expect(res.body).toHaveProperty('meta');
+      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(res.body.data).toHaveLength(2);
+      expect(res.body.meta).toHaveProperty('total', 2);
+      expect(res.body.meta).toHaveProperty('page', 1);
+      expect(res.body.meta).toHaveProperty('limit', 10);
       // verifica enriquecimento
-      const johnRating = res.body.find((r: any) => r.userId === john.id);
+      const johnRating = res.body.data.find((r: any) => r.userId === john.id);
       expect(johnRating).toHaveProperty('book');
       expect(johnRating.book).toHaveProperty('id', mockBook.id);
       expect(johnRating.book.title).toBe(mockBook.title);
       expect(johnRating).toHaveProperty('user');
     });
 
-    it('deve filtrar por googleBookId', async () => {
+    it('deve filtrar por googleBookId (paginado)', async () => {
       const res = await request(app.getHttpServer())
         .get(`/api/rating?googleBookId=${mockBook.id}`)
         .set('Authorization', `Bearer ${johnTokens.accessToken}`)
         .expect(200);
 
-      expect(res.body).toHaveLength(1);
-      expect(res.body[0].googleBookId).toBe(mockBook.id);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0].googleBookId).toBe(mockBook.id);
+      expect(res.body.meta.total).toBe(1);
     });
 
-    it('deve retornar array vazio quando filtro não encontra nada', async () => {
+    it('deve retornar array vazio quando filtro não encontra nada (paginado)', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/rating?googleBookId=nonexistent')
         .set('Authorization', `Bearer ${johnTokens.accessToken}`)
         .expect(200);
 
-      expect(res.body).toEqual([]);
+      expect(res.body.data).toEqual([]);
+      expect(res.body.meta.total).toBe(0);
     });
 
     it('deve lidar com enriquecimento falhando (book null) quando getBookById falha', async () => {
@@ -240,10 +247,42 @@ describe('Rating (e2e)', () => {
         .set('Authorization', `Bearer ${johnTokens.accessToken}`)
         .expect(200);
 
-      const johnRating = res.body.find((r: any) => r.googleBookId === mockBook.id);
+      const johnRating = res.body.data.find((r: any) => r.googleBookId === mockBook.id);
       expect(johnRating.book).toBeNull();
-      const janeRating = res.body.find((r: any) => r.googleBookId === mockBook2.id);
+      const janeRating = res.body.data.find((r: any) => r.googleBookId === mockBook2.id);
       expect(janeRating.book).not.toBeNull();
+    });
+
+    it('deve paginar com page e limit', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/rating?page=1&limit=1')
+        .set('Authorization', `Bearer ${johnTokens.accessToken}`)
+        .expect(200);
+
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.meta).toHaveProperty('total', 2);
+      expect(res.body.meta).toHaveProperty('page', 1);
+      expect(res.body.meta).toHaveProperty('limit', 1);
+      expect(res.body.meta).toHaveProperty('totalPages', 2);
+      expect(res.body.meta).toHaveProperty('hasNextPage', true);
+    });
+
+    it('deve retornar 400 quando limit excede max (20)', async () => {
+      await request(app.getHttpServer())
+        .get('/api/rating?limit=100')
+        .set('Authorization', `Bearer ${johnTokens.accessToken}`)
+        .expect(400);
+    });
+
+    it('deve retornar 400 quando page é inválido', async () => {
+      await request(app.getHttpServer())
+        .get('/api/rating?page=0')
+        .set('Authorization', `Bearer ${johnTokens.accessToken}`)
+        .expect(400);
+      await request(app.getHttpServer())
+        .get('/api/rating?page=-1')
+        .set('Authorization', `Bearer ${johnTokens.accessToken}`)
+        .expect(400);
     });
   });
 
