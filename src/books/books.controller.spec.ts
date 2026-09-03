@@ -41,9 +41,9 @@ describe('BooksController', () => {
     it('should call googleBooksService.searchBooks with query', async () => {
       mockGoogleBooksService.searchBooks.mockResolvedValue([mockBook] as any);
 
-      const result = await controller.search('test query');
+      const result = await controller.search({ q: 'test query' } as any);
 
-      expect(service.searchBooks).toHaveBeenCalledWith('test query');
+      expect(service.searchBooks).toHaveBeenCalledWith('test query', { q: 'test query' });
       expect(service.searchBooks).toHaveBeenCalledTimes(1);
       expect(result).toEqual([mockBook]);
     });
@@ -51,17 +51,17 @@ describe('BooksController', () => {
     it('should return empty array when no books found', async () => {
       mockGoogleBooksService.searchBooks.mockResolvedValue([]);
 
-      const result = await controller.search('nonexistent');
+      const result = await controller.search({ q: 'nonexistent' } as any);
 
       expect(result).toEqual([]);
-      expect(service.searchBooks).toHaveBeenCalledWith('nonexistent');
+      expect(service.searchBooks).toHaveBeenCalledWith('nonexistent', { q: 'nonexistent' });
     });
 
     it('should handle multiple books', async () => {
       const books = [mockBook, { ...mockBook, id: 'def456', title: 'Second' }];
       mockGoogleBooksService.searchBooks.mockResolvedValue(books as any);
 
-      const result = await controller.search('query');
+      const result = await controller.search({ q: 'query' } as any);
 
       expect(result).toHaveLength(2);
       expect(result[1].id).toBe('def456');
@@ -71,31 +71,40 @@ describe('BooksController', () => {
       const error = new Error('API error');
       mockGoogleBooksService.searchBooks.mockRejectedValue(error);
 
-      await expect(controller.search('query')).rejects.toThrow(error);
+      await expect(controller.search({ q: 'query' } as any)).rejects.toThrow(error);
     });
 
     it('should pass exact query string', async () => {
       mockGoogleBooksService.searchBooks.mockResolvedValue([] as any);
 
-      await controller.search('Harry Potter');
+      await controller.search({ q: 'Harry Potter' } as any);
 
-      expect(service.searchBooks).toHaveBeenCalledWith('Harry Potter');
+      expect(service.searchBooks).toHaveBeenCalledWith('Harry Potter', { q: 'Harry Potter' });
     });
 
     it('should handle empty query', async () => {
       mockGoogleBooksService.searchBooks.mockResolvedValue([] as any);
 
-      await controller.search('');
+      await controller.search({ q: '' } as any);
 
-      expect(service.searchBooks).toHaveBeenCalledWith('');
+      expect(service.searchBooks).toHaveBeenCalledWith('', { q: '' });
     });
 
     it('should handle query with special characters', async () => {
       mockGoogleBooksService.searchBooks.mockResolvedValue([] as any);
 
-      await controller.search('C++ Programming');
+      await controller.search({ q: 'C++ Programming' } as any);
 
-      expect(service.searchBooks).toHaveBeenCalledWith('C++ Programming');
+      expect(service.searchBooks).toHaveBeenCalledWith('C++ Programming', { q: 'C++ Programming' });
+    });
+
+    it('should pass pagination to service', async () => {
+      mockGoogleBooksService.searchBooks.mockResolvedValue([] as any);
+      const pagination: any = { q: 'query', page: 2, limit: 5 };
+
+      await controller.search(pagination);
+
+      expect(service.searchBooks).toHaveBeenCalledWith('query', pagination);
     });
   });
 

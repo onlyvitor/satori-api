@@ -2,6 +2,8 @@ import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { BookResponseDto } from './dto/book-response.dto';
+import { BooksPaginationDto } from './dto/books-pagination.dto';
+import { PAGINATION_CONSTANTS } from 'src/common/constants/pagination.constants';
 
 @Injectable()
 export class GoogleBooksService {
@@ -9,11 +11,23 @@ export class GoogleBooksService {
 
   constructor(private readonly httpService: HttpService) { }
 
-  async searchBooks(query: string): Promise<BookResponseDto[]> {
+  async searchBooks(query: string, paginationDto?: BooksPaginationDto): Promise<BookResponseDto[] | any> {
+    // Compatibilidade: paginationDto pode vir como string vazia em testes antigos, tratar
+    let page = PAGINATION_CONSTANTS.DEFAULT_PAGE;
+    let limit = PAGINATION_CONSTANTS.BOOKS.DEFAULT_LIMIT;
+    if (paginationDto && typeof paginationDto === 'object') {
+      page = paginationDto.page ?? page;
+      limit = paginationDto.limit ?? limit;
+    }
+
+    const startIndex = (page - 1) * limit;
+    const maxResults = Math.min(limit, PAGINATION_CONSTANTS.BOOKS.GOOGLE_MAX);
+
     try {
       const params: any = {
         q: query,
-        maxResults: 20,
+        startIndex,
+        maxResults,
       };
 
       if (process.env.GOOGLE_BOOKS_API_KEY) {

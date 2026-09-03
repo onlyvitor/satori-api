@@ -68,7 +68,7 @@ describe('GoogleBooksService', () => {
       const result = await service.searchBooks('test query');
 
       expect(httpService.get).toHaveBeenCalledWith('https://www.googleapis.com/books/v1/volumes', {
-        params: { q: 'test query', maxResults: 20 },
+        params: { q: 'test query', startIndex: 0, maxResults: 10 },
       });
       expect(result).toEqual([
         {
@@ -135,7 +135,7 @@ describe('GoogleBooksService', () => {
       await service.searchBooks('query');
 
       expect(httpService.get).toHaveBeenCalledWith(expect.any(String), {
-        params: { q: 'query', maxResults: 20, key: 'test-api-key' },
+        params: { q: 'query', startIndex: 0, maxResults: 10, key: 'test-api-key' },
       });
     });
 
@@ -146,7 +146,7 @@ describe('GoogleBooksService', () => {
       await service.searchBooks('query');
 
       expect(httpService.get).toHaveBeenCalledWith(expect.any(String), {
-        params: { q: 'query', maxResults: 20 },
+        params: { q: 'query', startIndex: 0, maxResults: 10 },
       });
       expect((httpService.get.mock.calls[0][1] as any).params.key).toBeUndefined();
     });
@@ -167,8 +167,8 @@ describe('GoogleBooksService', () => {
       const result = await service.searchBooks('query');
 
       expect(captured).toHaveLength(2);
-      expect(captured[0].params).toEqual({ q: 'query', maxResults: 20, key: 'blocked-key' });
-      expect(captured[1].params).toEqual({ q: 'query', maxResults: 20 });
+      expect(captured[0].params).toEqual({ q: 'query', startIndex: 0, maxResults: 10, key: 'blocked-key' });
+      expect(captured[1].params).toEqual({ q: 'query', startIndex: 0, maxResults: 10 });
       expect(result).toHaveLength(1);
     });
 
