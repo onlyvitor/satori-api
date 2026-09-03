@@ -36,6 +36,7 @@ describe('RatingService', () => {
     create: jest.fn(),
     save: jest.fn(),
     find: jest.fn(),
+    findAndCount: jest.fn(),
     findOne: jest.fn(),
     remove: jest.fn(),
   };
@@ -129,37 +130,41 @@ describe('RatingService', () => {
   describe('findAll', () => {
     it('should return all ratings with book enrichment when no filter', async () => {
       const ratings = [mockRating, { ...mockRating, id: 2, googleBookId: 'def456' }];
-      mockRepository.find.mockResolvedValue(ratings as any);
+      mockRepository.findAndCount.mockResolvedValue([ratings, 2] as any);
       mockGoogleBooksService.getBookById.mockResolvedValue(mockBook as any);
 
       const result = await service.findAll();
 
-      expect(mockRepository.find).toHaveBeenCalledWith({ where: {}, relations: ['user'] });
+      expect(mockRepository.findAndCount).toHaveBeenCalledWith({ where: {}, relations: ['user'], order: { id: 'DESC' }, skip: 0, take: 10 });
       expect(mockGoogleBooksService.getBookById).toHaveBeenCalledTimes(2);
-      expect(result).toHaveLength(2);
-      expect(result[0]).toEqual(expect.objectContaining({ ...mockRating, book: mockBook }));
+      expect(result.data).toHaveLength(2);
+      expect(result.data[0]).toEqual(expect.objectContaining({ ...mockRating, book: mockBook }));
+      expect(result.meta).toEqual({ total: 2, page: 1, limit: 10, totalPages: 1, hasNextPage: false, hasPrevPage: false });
     });
 
     it('should filter by googleBookId when provided', async () => {
-      mockRepository.find.mockResolvedValue([mockRating] as any);
+      mockRepository.findAndCount.mockResolvedValue([[mockRating], 1] as any);
       mockGoogleBooksService.getBookById.mockResolvedValue(mockBook as any);
 
       const result = await service.findAll('abc123');
 
-      expect(mockRepository.find).toHaveBeenCalledWith({
+      expect(mockRepository.findAndCount).toHaveBeenCalledWith({
         where: { googleBookId: 'abc123' },
         relations: ['user'],
+        order: { id: 'DESC' },
+        skip: 0,
+        take: 10,
       });
-      expect(result).toHaveLength(1);
+      expect(result.data).toHaveLength(1);
     });
 
     it('should return ratings with book null when googleBooks fails', async () => {
-      mockRepository.find.mockResolvedValue([mockRating] as any);
+      mockRepository.findAndCount.mockResolvedValue([[mockRating], 1] as any);
       mockGoogleBooksService.getBookById.mockRejectedValue(new Error('failed'));
 
       const result = await service.findAll();
 
-      expect(result[0]).toEqual(expect.objectContaining({ ...mockRating, book: null }));
+      expect(result.data[0]).toEqual(expect.objectContaining({ ...mockRating, book: null }));
     });
 
     it('should handle mix of success and failure in enrichment', async () => {
@@ -167,32 +172,43 @@ describe('RatingService', () => {
         { ...mockRating, id: 1, googleBookId: 'good' },
         { ...mockRating, id: 2, googleBookId: 'bad' },
       ];
-      mockRepository.find.mockResolvedValue(ratings as any);
+      mockRepository.findAndCount.mockResolvedValue([ratings, 2] as any);
       mockGoogleBooksService.getBookById
         .mockResolvedValueOnce(mockBook as any)
         .mockRejectedValueOnce(new Error('not found'));
 
       const result = await service.findAll();
 
-      expect(result[0].book).toEqual(mockBook);
-      expect(result[1].book).toBeNull();
+      expect(result.data[0].book).toEqual(mockBook);
+      expect(result.data[1].book).toBeNull();
     });
 
     it('should return empty array when no ratings', async () => {
-      mockRepository.find.mockResolvedValue([]);
+      mockRepository.findAndCount.mockResolvedValue([[], 0] as any);
 
       const result = await service.findAll();
 
-      expect(result).toEqual([]);
+      expect(result.data).toEqual([]);
+      expect(result.meta.total).toBe(0);
       expect(mockGoogleBooksService.getBookById).not.toHaveBeenCalled();
     });
 
     it('should not call getBookById when no ratings', async () => {
-      mockRepository.find.mockResolvedValue([]);
+      mockRepository.findAndCount.mockResolvedValue([[], 0] as any);
 
       await service.findAll('filter');
 
       expect(mockGoogleBooksService.getBookById).not.toHaveBeenCalled();
+    });
+
+    it('should handle pagination with page and limit', async () => {
+      mockRepository.findAndCount.mockResolvedValue([[mockRating], 15] as any);
+      mockGoogleBooksService.getBookById.mockResolvedValue(mockBook as any);
+
+      const result = await service.findAll({ page: 2, limit: 5 } as any);
+
+      expect(mockRepository.findAndCount).toHaveBeenCalledWith(expect.objectContaining({ skip: 5, take: 5 }));
+      expect(result.meta).toEqual({ total: 15, page: 2, limit: 5, totalPages: 3, hasNextPage: true, hasPrevPage: true });
     });
   });
 

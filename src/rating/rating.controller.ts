@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Req } from '@
 import { RatingService } from './rating.service';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { UpdateRatingDto } from './dto/update-rating.dto';
+import { RatingPaginationDto } from './dto/rating-pagination.dto';
 
 @Controller('rating')
 export class RatingController {
@@ -13,8 +14,8 @@ export class RatingController {
   }
 
   @Get()
-  findAll(@Query('googleBookId') googleBookId?: string) {
-    return this.ratingService.findAll(googleBookId);
+  findAll(@Query() paginationDto: RatingPaginationDto) {
+    return this.ratingService.findAll(paginationDto);
   }
 
   @Get(':id')

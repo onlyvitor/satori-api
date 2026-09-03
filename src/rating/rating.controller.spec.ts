@@ -108,47 +108,60 @@ describe('RatingController', () => {
 
   describe('findAll', () => {
     it('should call ratingService.findAll without param when none provided', async () => {
-      mockRatingService.findAll.mockResolvedValue([mockRating] as any);
+      const paginated = { data: [mockRating], meta: { total: 1, page: 1, limit: 10, totalPages: 1, hasNextPage: false, hasPrevPage: false } };
+      mockRatingService.findAll.mockResolvedValue(paginated as any);
 
-      const result = await controller.findAll();
+      const result = await controller.findAll({} as any);
 
-      expect(service.findAll).toHaveBeenCalledWith(undefined);
+      expect(service.findAll).toHaveBeenCalledWith({} as any);
       expect(service.findAll).toHaveBeenCalledTimes(1);
-      expect(result).toEqual([mockRating]);
+      expect(result).toEqual(paginated);
     });
 
     it('should call ratingService.findAll with googleBookId filter', async () => {
-      mockRatingService.findAll.mockResolvedValue([mockRating] as any);
+      const paginated = { data: [mockRating], meta: { total: 1, page: 1, limit: 10, totalPages: 1, hasNextPage: false, hasPrevPage: false } };
+      mockRatingService.findAll.mockResolvedValue(paginated as any);
 
-      const result = await controller.findAll('abc123');
+      const result = await controller.findAll({ googleBookId: 'abc123' } as any);
 
-      expect(service.findAll).toHaveBeenCalledWith('abc123');
-      expect(result).toEqual([mockRating]);
+      expect(service.findAll).toHaveBeenCalledWith({ googleBookId: 'abc123' });
+      expect(result).toEqual(paginated);
     });
 
-    it('should return empty array when service returns empty', async () => {
-      mockRatingService.findAll.mockResolvedValue([]);
+    it('should return empty when service returns empty paginated', async () => {
+      const paginated = { data: [], meta: { total: 0, page: 1, limit: 10, totalPages: 1, hasNextPage: false, hasPrevPage: false } };
+      mockRatingService.findAll.mockResolvedValue(paginated as any);
 
-      const result = await controller.findAll();
+      const result = await controller.findAll({} as any);
 
-      expect(result).toEqual([]);
+      expect(result).toEqual(paginated);
     });
 
     it('should propagate errors from service', async () => {
       const error = new Error('DB error');
       mockRatingService.findAll.mockRejectedValue(error);
 
-      await expect(controller.findAll()).rejects.toThrow(error);
+      await expect(controller.findAll({} as any)).rejects.toThrow(error);
     });
 
     it('should handle different googleBookId values', async () => {
-      mockRatingService.findAll.mockResolvedValue([]);
+      mockRatingService.findAll.mockResolvedValue({ data: [], meta: {} } as any);
 
-      await controller.findAll('xyz789');
-      expect(service.findAll).toHaveBeenCalledWith('xyz789');
+      await controller.findAll({ googleBookId: 'xyz789' } as any);
+      expect(service.findAll).toHaveBeenCalledWith({ googleBookId: 'xyz789' });
 
-      await controller.findAll('other');
-      expect(service.findAll).toHaveBeenLastCalledWith('other');
+      await controller.findAll({ googleBookId: 'other' } as any);
+      expect(service.findAll).toHaveBeenLastCalledWith({ googleBookId: 'other' });
+    });
+
+    it('should handle pagination params', async () => {
+      const paginated = { data: [mockRating], meta: { total: 15, page: 2, limit: 5, totalPages: 3, hasNextPage: true, hasPrevPage: true } };
+      mockRatingService.findAll.mockResolvedValue(paginated as any);
+
+      const result = await controller.findAll({ page: 2, limit: 5 } as any);
+
+      expect(service.findAll).toHaveBeenCalledWith({ page: 2, limit: 5 });
+      expect(result).toEqual(paginated);
     });
   });
 

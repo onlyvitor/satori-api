@@ -5,6 +5,9 @@ import { CreateRatingDto } from './dto/create-rating.dto';
 import { UpdateRatingDto } from './dto/update-rating.dto';
 import { Rating } from './entities/rating.entity';
 import { GoogleBooksService } from '../books/google-books.service';
+import { RatingPaginationDto } from './dto/rating-pagination.dto';
+import { buildPaginatedResponse } from 'src/common/dto/paginated-response.dto';
+import { PAGINATION_CONSTANTS } from 'src/common/constants/pagination.constants';
 
 @Injectable()
 export class RatingService {
@@ -26,15 +29,30 @@ export class RatingService {
     return this.ratingRepository.save(rating);
   }
 
-  async findAll(googleBookId?: string) {
+  async findAll(paginationDto?: RatingPaginationDto | string) {
+    // Compatibilidade: se receber string (legado), trata como googleBookId
+    let dto: RatingPaginationDto;
+    if (typeof paginationDto === 'string') {
+      dto = { googleBookId: paginationDto } as RatingPaginationDto;
+    } else {
+      dto = paginationDto ?? {};
+    }
+    const page = dto.page ?? PAGINATION_CONSTANTS.DEFAULT_PAGE;
+    const limit = dto.limit ?? PAGINATION_CONSTANTS.RATING.DEFAULT_LIMIT;
     const where: any = {};
-    if (googleBookId) {
-      where.googleBookId = googleBookId;
+    if (dto.googleBookId) {
+      where.googleBookId = dto.googleBookId;
     }
 
-    const ratings = await this.ratingRepository.find({ where, relations: ['user'] });
+    const [ratings, total] = await this.ratingRepository.findAndCount({
+      where,
+      relations: ['user'],
+      order: { id: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
 
-    // Enrich each rating with book data
+    // Enrich each rating with book data (only page)
     const ratingsWithBooks = await Promise.all(
       ratings.map(async (rating) => {
         try {
@@ -46,7 +64,12 @@ export class RatingService {
       }),
     );
 
-    return ratingsWithBooks;
+    return buildPaginatedResponse(ratingsWithBooks, total, page, limit);
+  }
+
+  // Mantém compatibilidade para chamadas legadas findAll(string)
+  async findAllLegacy(googleBookId?: string) {
+    return this.findAll({ googleBookId } as RatingPaginationDto);
   }
 
   async findOne(id: number) {
