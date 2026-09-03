@@ -17,7 +17,9 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
+    "test:e2e:docker": "docker exec postgres_db_legal psql -U postgres -c \"CREATE DATABASE db_test;\" || true && npm run test:e2e",
+    "db:create:test": "PGPASSWORD=12345678 psql -h localhost -U postgres -c \"CREATE DATABASE db_test;\" || echo \"db_test já existe\""
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",
