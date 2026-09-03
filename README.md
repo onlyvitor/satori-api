@@ -52,6 +52,48 @@ npm run start:prod
 
 The API will be available at `http://localhost:3000/api`.
 
+### Health
+- `GET /api/health` – **público**, sem auth, retorna `{ status:'ok', timestamp, uptime }` – usado pelo `HEALTHCHECK` do Docker.
+
+---
+
+## Docker
+
+> **Sempre use `--env-file`**: o container não copia `.env`; as variáveis (`DB_*`, `JWT_SECRET`, `PORT`) devem ser injetadas.
+
+**Dockerfile:** multi-stage com `node:22-slim` (conforme solicitado), `non-root` (`appuser:appgroup`), `HEALTHCHECK` via `curl -f http://localhost:3000/api/health`.
+
+```bash
+# Build
+docker build -t ratebooks:local .
+
+# Run (exige --env-file, usa --network host para acessar postgres local)
+docker run -d --name ratebooks_api --env-file .env --network host ratebooks:local
+# ou com bridge + host.docker.internal:
+docker run -d -p 3000:3000 --env-file .env -e DB_HOST=host.docker.internal ratebooks:local
+
+# Logs e health
+docker logs -f ratebooks_api
+curl http://localhost:3000/api/health  # {"status":"ok", ...}
+docker inspect --format '{{.State.Health.Status}}' ratebooks_api
+```
+
+**Docker Compose (recomendado):**
+
+```bash
+# Sobe db (postgres:16) + api com env_file .env, DB_HOST=db, healthchecks
+docker compose up --build -d
+docker compose logs -f
+curl http://localhost:3000/api/health
+docker compose down
+
+# Alternativa sem compose (db manual)
+docker run -d --name postgres_db_legal -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=12345678 -e POSTGRES_DB=db_legal -p 5432:5432 postgres:16
+PGPASSWORD=12345678 psql -h localhost -U postgres -c "CREATE DATABASE db_test;"
+```
+
+Arquivos: `Dockerfile`, `.dockerignore`, `docker-compose.yml`.
+
 ---
 
 ## Endpoints
