@@ -35,7 +35,7 @@ export class RatingService {
     if (typeof paginationDto === 'string') {
       dto = { googleBookId: paginationDto } as RatingPaginationDto;
     } else {
-      dto = paginationDto ?? {};
+      dto = (paginationDto ?? {}) as RatingPaginationDto;
     }
     const page = dto.page ?? PAGINATION_CONSTANTS.DEFAULT_PAGE;
     const limit = dto.limit ?? PAGINATION_CONSTANTS.RATING.DEFAULT_LIMIT;

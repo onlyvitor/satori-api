@@ -13,8 +13,8 @@ export class GoogleBooksService {
 
   async searchBooks(query: string, paginationDto?: BooksPaginationDto): Promise<BookResponseDto[] | any> {
     // Compatibilidade: paginationDto pode vir como string vazia em testes antigos, tratar
-    let page = PAGINATION_CONSTANTS.DEFAULT_PAGE;
-    let limit = PAGINATION_CONSTANTS.BOOKS.DEFAULT_LIMIT;
+    let page: number = PAGINATION_CONSTANTS.DEFAULT_PAGE;
+    let limit: number = PAGINATION_CONSTANTS.BOOKS.DEFAULT_LIMIT;
     if (paginationDto && typeof paginationDto === 'object') {
       page = paginationDto.page ?? page;
       limit = paginationDto.limit ?? limit;
