@@ -80,10 +80,18 @@ POST /api/auth/login
 | Method | Route | Auth Required | Description |
 |--------|-------|---------------|-------------|
 | `POST`   | `/api/users`     | No  | Register a new user |
-| `GET`    | `/api/users`     | Yes | List all users |
+| `GET`    | `/api/users?page=1&limit=10`     | Yes | List all users (**paginated**) |
 | `GET`    | `/api/users/:id` | Yes | Get a user by ID |
 | `PATCH`  | `/api/users/:id` | Yes | Update a user |
 | `DELETE` | `/api/users/:id` | Yes | Delete a user |
+
+**Pagination (Users):** `page` (default 1, min 1), `limit` (default 10, max 20). Response: `{ success:true, data: User[], meta:{ total, page, limit, totalPages, hasNextPage, hasPrevPage } }`.
+
+**Example — List users paginated:**
+```
+GET /api/users?page=2&limit=5
+→ { success:true, data:[...5], meta:{ total:25, page:2, limit:5, totalPages:5 } }
+```
 
 **Example — Register a user:**
 ```json
@@ -103,12 +111,13 @@ Proxy endpoints for the Google Books API.
 
 | Method | Route | Auth Required | Description |
 |--------|-------|---------------|-------------|
-| `GET` | `/api/books/search?q=query` | Yes | Search books by title or author |
+| `GET` | `/api/books/search?q=query&page=1&limit=10` | Yes | Search books by title or author (**paginated**: `page` default 1, `limit` default 10 max 20 → `startIndex`/`maxResults` no Google) |
 | `GET` | `/api/books/:googleBookId`  | Yes | Get details of a specific book |
 
 **Example — Search books:**
 ```
-GET /api/books/search?q=Harry+Potter
+GET /api/books/search?q=Harry+Potter&page=2&limit=5
+→ [...5] (internamente: startIndex=5, maxResults=5)
 ```
 
 **Response:**
@@ -133,11 +142,18 @@ GET /api/books/search?q=Harry+Potter
 | Method | Route | Auth Required | Description |
 |--------|-------|---------------|-------------|
 | `POST`   | `/api/rating`                    | Yes | Create a rating |
-| `GET`    | `/api/rating`                    | Yes | List all ratings |
-| `GET`    | `/api/rating?googleBookId=id`    | Yes | Filter ratings by book |
+| `GET`    | `/api/rating?page=1&limit=10`                    | Yes | List all ratings (**paginated**) |
+| `GET`    | `/api/rating?googleBookId=id&page=1&limit=10`    | Yes | Filter ratings by book (**paginated**) |
 | `GET`    | `/api/rating/:id`                | Yes | Get a specific rating |
 | `PATCH`  | `/api/rating/:id`                | Yes | Update a rating |
 | `DELETE` | `/api/rating/:id`                | Yes | Delete a rating |
+
+**Pagination (Ratings):** `page` default 1, `limit` default 10 max 20. Response: `{ data: Rating[], meta:{ total, page, limit, totalPages, hasNextPage, hasPrevPage } }`. Combina `googleBookId` + paginação: `?googleBookId=xxx&page=2&limit=5`. Erros: `400` se `limit>20` ou `page<1`.
+
+**Example — List ratings paginated:**
+```
+GET /api/rating?page=1&limit=1 → { data:[{...book:{...}}], meta:{total:2, page:1, limit:1, totalPages:2} }
+```
 
 **Example — Create a rating:**
 ```json
@@ -163,26 +179,43 @@ The `googleBookId` is validated against the Google Books API before saving. Read
 
 ---
 
-## Project structure
+## Pagination
+
+Contrato compartilhado em `src/common` (`interfaces`, `dto`, `constants`) com implementação per-domínio (`UsersPaginationDto`, `RatingPaginationDto`, `BooksPaginationDto` – cada um define `default`/`max` via `PAGINATION_CONSTANTS`). Detalhes completos em [`docs/PAGINACAO.md`](docs/PAGINACAO.md).
+
+Exemplo de `meta`:
+```json
+{
+  "data": [...],
+  "meta": { "total": 25, "page": 2, "limit": 10, "totalPages": 3, "hasNextPage": true, "hasPrevPage": true }
+}
+```
+
+### Project structure
 
 ```
 src/
+├── common/             # Contrato compartilhado de paginação
+│   ├── constants/pagination.constants.ts
+│   ├── dto/pagination.dto.ts, paginated-response.dto.ts
+│   ├── interfaces/pagination.interface.ts
 ├── auth/               # JWT authentication (login, refresh, guard)
-├── books/              # Google Books API integration
-│   ├── dto/
+├── books/              # Google Books API integration (paginated search via startIndex)
+│   ├── dto/books-pagination.dto.ts
 │   ├── books.controller.ts
 │   ├── books.module.ts
 │   └── google-books.service.ts
-├── rating/             # Book ratings
-│   ├── dto/
+├── rating/             # Book ratings (paginated findAndCount + enrich)
+│   ├── dto/rating-pagination.dto.ts
 │   ├── entities/
 │   ├── rating.controller.ts
 │   ├── rating.module.ts
 │   ├── rating.service.ts
 │   └── status.enum.ts
-├── users/              # User CRUD
+├── users/              # User CRUD (paginated findAndCount)
+│   ├── dto/users-pagination.dto.ts
 ├── app.module.ts
-└── main.ts
+└── main.ts (ValidationPipe com transform)
 ```
 
 ---
@@ -190,15 +223,19 @@ src/
 ## Tests
 
 ```bash
-# Unit tests
+# Unit tests (202 testes)
 npm run test
 
 # Test coverage
 npm run test:cov
 
-# End-to-end tests
-npm run test:e2e
+# End-to-end tests (98 testes, db_test isolado)
+npm run db:create:test        # cria db_test no mesmo container postgres_db_legal (opção A)
+npm run test:e2e              # --runInBand para evitar race no db_test
+npm run test:e2e:docker       # cria db_test via docker exec + roda E2E
 ```
+
+**Cobertura de paginação:** unitários validam `findAndCount` + `meta`, E2E validam `?page&limit`, `400` para limites inválidos e `hasNextPage/hasPrevPage`. Ver `docs/PAGINACAO.md`.
 
 ---
 
