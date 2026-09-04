@@ -1,12 +1,25 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+  Req,
+  UseInterceptors,
+  ClassSerializerInterceptor,
+} from '@nestjs/common';
 import { RatingService } from './rating.service';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { UpdateRatingDto } from './dto/update-rating.dto';
 import { RatingPaginationDto } from './dto/rating-pagination.dto';
 
+@UseInterceptors(ClassSerializerInterceptor)
 @Controller('rating')
 export class RatingController {
-  constructor(private readonly ratingService: RatingService) { }
+  constructor(private readonly ratingService: RatingService) {}
 
   @Post()
   create(@Body() createRatingDto: CreateRatingDto, @Req() req) {
@@ -24,7 +37,11 @@ export class RatingController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateRatingDto: UpdateRatingDto, @Req() req) {
+  update(
+    @Param('id') id: string,
+    @Body() updateRatingDto: UpdateRatingDto,
+    @Req() req,
+  ) {
     return this.ratingService.update(+id, updateRatingDto, req.user);
   }
 

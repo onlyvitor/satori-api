@@ -12,28 +12,46 @@ import { PAGINATION_CONSTANTS } from 'src/common/constants/pagination.constants'
 
 @Injectable()
 export class UsersService {
-  constructor(@InjectRepository(User) private readonly userRepository: Repository<User>) { }
+  constructor(
+    @InjectRepository(User) private readonly userRepository: Repository<User>,
+  ) {}
+
+  private toSafeUser(user: User): Omit<User, 'password'> {
+    if (!user) return user as any;
+    // Defesa híbrida: @Exclude + select:false no entity + remoção manual garante cobertura em testes/unit onde instanceToPlain não tem metadata
+    const { password, ...safe } = user as any;
+    return safe as Omit<User, 'password'>;
+  }
 
   async create(createUserDto: CreateUserDto) {
-    const userEmail = await this.userRepository.findOne({ where: { email: createUserDto.email } });
-    const userName = await this.userRepository.findOne({ where: { name: createUserDto.name } });
+    const userEmail = await this.userRepository.findOne({
+      where: { email: createUserDto.email },
+    });
+    const userName = await this.userRepository.findOne({
+      where: { name: createUserDto.name },
+    });
 
     if (userEmail || userName) {
-      throw new BadRequestException({ success: false, message: 'User already exists' });
+      throw new BadRequestException({
+        success: false,
+        message: 'User already exists',
+      });
     }
 
     const passwordHash = await bcrypt.hash(createUserDto.password, 10);
 
     const user = this.userRepository.create({
       ...createUserDto,
-      password: passwordHash
+      password: passwordHash,
     });
-    return await this.userRepository.save(user);
+    const saved = await this.userRepository.save(user);
+    return this.toSafeUser(saved);
   }
 
   async findAll(paginationDto?: UsersPaginationDto) {
     const page = paginationDto?.page ?? PAGINATION_CONSTANTS.DEFAULT_PAGE;
-    const limit = paginationDto?.limit ?? PAGINATION_CONSTANTS.USERS.DEFAULT_LIMIT;
+    const limit =
+      paginationDto?.limit ?? PAGINATION_CONSTANTS.USERS.DEFAULT_LIMIT;
 
     const [data, total] = await this.userRepository.findAndCount({
       order: { id: 'DESC' },
@@ -41,34 +59,89 @@ export class UsersService {
       take: limit,
     });
 
-    return buildSuccessPaginatedResponse(data, total, page, limit);
+    const safeData = data.map((u) => this.toSafeUser(u));
+    return buildSuccessPaginatedResponse(safeData, total, page, limit);
   }
 
   async findOne(id: number) {
     const user = await this.userRepository.findOne({ where: { id } });
     if (!user) {
-      throw new NotFoundException({ success: false, message: 'User not found' });
+      throw new NotFoundException({
+        success: false,
+        message: 'User not found',
+      });
     }
-    return { success: true, data: user };
+    return { success: true, data: this.toSafeUser(user) };
   }
 
   async findByEmail(email: string) {
+    // password é select:false, precisa addSelect para auth comparar bcrypt
+    return await this.userRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.email = :email', { email })
+      .getOne();
+  }
+
+  async findByEmailWithoutPassword(email: string) {
     return await this.userRepository.findOne({ where: { email } });
   }
 
   async update(id: number, updateUserDto: UpdateUserDto) {
     const user = await this.userRepository.findOne({ where: { id } });
     if (!user) {
-      throw new NotFoundException({ success: false, message: 'User not found' });
+      throw new NotFoundException({
+        success: false,
+        message: 'User not found',
+      });
     }
-    return { success: true, data: await this.userRepository.update(id, updateUserDto) };
+
+    // Hash password se vier no payload, e previne mass-assignment de isAdmin
+    const { isAdmin, ...safeDto } = updateUserDto as any;
+    if (safeDto.password) {
+      safeDto.password = await bcrypt.hash(safeDto.password, 10);
+    }
+
+    // Checa duplicidade se trocar email/name
+    if (safeDto.email || safeDto.name) {
+      if (safeDto.email) {
+        const existsEmail = await this.userRepository.findOne({
+          where: { email: safeDto.email },
+        });
+        if (existsEmail && existsEmail.id !== id) {
+          throw new BadRequestException({
+            success: false,
+            message: 'User already exists',
+          });
+        }
+      }
+      if (safeDto.name) {
+        const existsName = await this.userRepository.findOne({
+          where: { name: safeDto.name },
+        });
+        if (existsName && existsName.id !== id) {
+          throw new BadRequestException({
+            success: false,
+            message: 'User already exists',
+          });
+        }
+      }
+    }
+
+    Object.assign(user, safeDto);
+    const saved = await this.userRepository.save(user);
+    return { success: true, data: this.toSafeUser(saved) };
   }
 
   async remove(id: number) {
     const user = await this.userRepository.findOne({ where: { id } });
     if (!user) {
-      throw new NotFoundException({ success: false, message: 'User not found' });
+      throw new NotFoundException({
+        success: false,
+        message: 'User not found',
+      });
     }
-    return { success: true, data: await this.userRepository.remove(user) };
+    const removed = await this.userRepository.remove(user);
+    return { success: true, data: this.toSafeUser(removed) };
   }
 }
