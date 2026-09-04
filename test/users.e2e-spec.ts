@@ -1,6 +1,10 @@
 import request from 'supertest';
 import { INestApplication } from '@nestjs/common';
-import { createTestApp, closeTestApp, TestAppContext } from './helpers/test-app.helper';
+import {
+  createTestApp,
+  closeTestApp,
+  TestAppContext,
+} from './helpers/test-app.helper';
 import { cleanDb } from './helpers/db.helper';
 import { createUser, login } from './helpers/auth.helper';
 import { userFixtures } from './helpers/fixtures';
@@ -35,36 +39,59 @@ describe('Users (e2e)', () => {
       expect(res.body).toHaveProperty('id');
       expect(res.body).toHaveProperty('name', userFixtures.john.name);
       expect(res.body).toHaveProperty('email', userFixtures.john.email);
-      expect(res.body).not.toHaveProperty('password', userFixtures.john.password);
+      expect(res.body).not.toHaveProperty(
+        'password',
+        userFixtures.john.password,
+      );
       // password é hasheado
       expect(res.body.password).not.toBe(userFixtures.john.password);
     });
 
     it('deve retornar 400 quando email já existe', async () => {
-      await request(app.getHttpServer()).post('/api/users').send(userFixtures.john).expect(201);
+      await request(app.getHttpServer())
+        .post('/api/users')
+        .send(userFixtures.john)
+        .expect(201);
 
       const res = await request(app.getHttpServer())
         .post('/api/users')
-        .send({ name: 'outro', email: userFixtures.john.email, password: '123' })
+        .send({
+          name: 'outro',
+          email: userFixtures.john.email,
+          password: '123',
+        })
         .expect(400);
 
       expect(res.body.message).toMatch(/User already exists/i);
     });
 
     it('deve retornar 400 quando nome já existe', async () => {
-      await request(app.getHttpServer()).post('/api/users').send(userFixtures.john).expect(201);
+      await request(app.getHttpServer())
+        .post('/api/users')
+        .send(userFixtures.john)
+        .expect(201);
 
       const res = await request(app.getHttpServer())
         .post('/api/users')
-        .send({ name: userFixtures.john.name, email: 'outro@email.com', password: '123' })
+        .send({
+          name: userFixtures.john.name,
+          email: 'outro@email.com',
+          password: '123',
+        })
         .expect(400);
 
       expect(JSON.stringify(res.body)).toMatch(/User already exists/i);
     });
 
     it('deve retornar 400 quando body inválido (ValidationPipe)', async () => {
-      await request(app.getHttpServer()).post('/api/users').send({}).expect(400);
-      await request(app.getHttpServer()).post('/api/users').send({ name: 'a' }).expect(400);
+      await request(app.getHttpServer())
+        .post('/api/users')
+        .send({})
+        .expect(400);
+      await request(app.getHttpServer())
+        .post('/api/users')
+        .send({ name: 'a' })
+        .expect(400);
       await request(app.getHttpServer())
         .post('/api/users')
         .send({ name: 'a', email: 'not-email', password: '123' })
@@ -79,13 +106,23 @@ describe('Users (e2e)', () => {
     });
 
     it('deve hashear a senha no banco', async () => {
-      await request(app.getHttpServer()).post('/api/users').send(userFixtures.john).expect(201);
+      await request(app.getHttpServer())
+        .post('/api/users')
+        .send(userFixtures.john)
+        .expect(201);
       const ds = app.get(DataSource);
       const repo = ds.getRepository(User);
-      const user = await repo.findOne({ where: { email: userFixtures.john.email } });
+      const user = await repo
+        .createQueryBuilder('user')
+        .addSelect('user.password')
+        .where('user.email = :email', { email: userFixtures.john.email })
+        .getOne();
       expect(user).toBeDefined();
       expect(user!.password).not.toBe(userFixtures.john.password);
-      const match = await bcrypt.compare(userFixtures.john.password, user!.password);
+      const match = await bcrypt.compare(
+        userFixtures.john.password,
+        user!.password,
+      );
       expect(match).toBe(true);
     });
   });
@@ -97,7 +134,11 @@ describe('Users (e2e)', () => {
 
     it('deve listar usuários com token válido', async () => {
       await createUser(app, userFixtures.john);
-      const tokens = await login(app, userFixtures.john.email, userFixtures.john.password);
+      const tokens = await login(
+        app,
+        userFixtures.john.email,
+        userFixtures.john.password,
+      );
 
       const res = await request(app.getHttpServer())
         .get('/api/users')
@@ -132,7 +173,11 @@ describe('Users (e2e)', () => {
 
     it('deve retornar 401 com refresh token', async () => {
       await createUser(app, userFixtures.john);
-      const tokens = await login(app, userFixtures.john.email, userFixtures.john.password);
+      const tokens = await login(
+        app,
+        userFixtures.john.email,
+        userFixtures.john.password,
+      );
       await request(app.getHttpServer())
         .get('/api/users')
         .set('Authorization', `Bearer ${tokens.refreshToken}`)
@@ -147,7 +192,11 @@ describe('Users (e2e)', () => {
     beforeEach(async () => {
       const user = await createUser(app, userFixtures.john);
       johnId = user.id;
-      tokens = await login(app, userFixtures.john.email, userFixtures.john.password);
+      tokens = await login(
+        app,
+        userFixtures.john.email,
+        userFixtures.john.password,
+      );
     });
 
     it('deve retornar usuário por id com token', async () => {
@@ -169,7 +218,9 @@ describe('Users (e2e)', () => {
     });
 
     it('deve retornar 401 sem token', async () => {
-      await request(app.getHttpServer()).get(`/api/users/${johnId}`).expect(401);
+      await request(app.getHttpServer())
+        .get(`/api/users/${johnId}`)
+        .expect(401);
     });
   });
 
@@ -183,8 +234,16 @@ describe('Users (e2e)', () => {
     beforeEach(async () => {
       john = await createUser(app, userFixtures.john);
       jane = await createUser(app, userFixtures.jane);
-      johnTokens = await login(app, userFixtures.john.email, userFixtures.john.password);
-      janeTokens = await login(app, userFixtures.jane.email, userFixtures.jane.password);
+      johnTokens = await login(
+        app,
+        userFixtures.john.email,
+        userFixtures.john.password,
+      );
+      janeTokens = await login(
+        app,
+        userFixtures.jane.email,
+        userFixtures.jane.password,
+      );
 
       // cria admin direto via repo
       const ds = app.get(DataSource);
@@ -197,7 +256,11 @@ describe('Users (e2e)', () => {
         isAdmin: true,
       });
       await repo.save(admin);
-      adminTokens = await login(app, userFixtures.admin.email, userFixtures.admin.password);
+      adminTokens = await login(
+        app,
+        userFixtures.admin.email,
+        userFixtures.admin.password,
+      );
     });
 
     it('deve permitir owner atualizar próprio recurso', async () => {
@@ -242,7 +305,10 @@ describe('Users (e2e)', () => {
     });
 
     it('deve retornar 401 sem token', async () => {
-      await request(app.getHttpServer()).patch(`/api/users/${john.id}`).send({ name: 'x' }).expect(401);
+      await request(app.getHttpServer())
+        .patch(`/api/users/${john.id}`)
+        .send({ name: 'x' })
+        .expect(401);
     });
 
     it('deve retornar 403 quando tenta atualizar sem ser owner nem admin (mesmo com token válido de outro)', async () => {
@@ -267,8 +333,16 @@ describe('Users (e2e)', () => {
     beforeEach(async () => {
       john = await createUser(app, userFixtures.john);
       jane = await createUser(app, userFixtures.jane);
-      johnTokens = await login(app, userFixtures.john.email, userFixtures.john.password);
-      janeTokens = await login(app, userFixtures.jane.email, userFixtures.jane.password);
+      johnTokens = await login(
+        app,
+        userFixtures.john.email,
+        userFixtures.john.password,
+      );
+      janeTokens = await login(
+        app,
+        userFixtures.jane.email,
+        userFixtures.jane.password,
+      );
 
       const ds = app.get(DataSource);
       const repo = ds.getRepository(User);
@@ -281,7 +355,11 @@ describe('Users (e2e)', () => {
           isAdmin: true,
         }),
       );
-      adminTokens = await login(app, userFixtures.admin.email, userFixtures.admin.password);
+      adminTokens = await login(
+        app,
+        userFixtures.admin.email,
+        userFixtures.admin.password,
+      );
     });
 
     it('deve permitir owner deletar próprio recurso', async () => {
@@ -324,7 +402,9 @@ describe('Users (e2e)', () => {
     });
 
     it('deve retornar 401 sem token', async () => {
-      await request(app.getHttpServer()).delete(`/api/users/${john.id}`).expect(401);
+      await request(app.getHttpServer())
+        .delete(`/api/users/${john.id}`)
+        .expect(401);
     });
   });
 });
