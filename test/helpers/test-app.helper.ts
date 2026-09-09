@@ -2,7 +2,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AppModule } from '../../src/app.module';
 import { DataSource } from 'typeorm';
-import { GoogleBooksService } from '../../src/books/google-books.service';
+import { GoogleBooksService } from '../../src/books/infrastructure/google-books.service';
 import { mockBook, mockBooksSearchResult } from './fixtures';
 
 export interface TestAppContext {
