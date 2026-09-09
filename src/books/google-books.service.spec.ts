@@ -321,6 +321,12 @@ describe('GoogleBooksService', () => {
         params: { q: 'query', startIndex: 0, maxResults: 10, key: 'key' },
       });
     });
+
+    it('should handle null pagination param', async () => {
+      mockHttpService.get.mockReturnValue(of({ data: { items: [] } }) as any);
+      const result = await service.searchBooks('query', null as any);
+      expect(result).toEqual([]);
+    });
   });
 
   describe('getBookById', () => {
