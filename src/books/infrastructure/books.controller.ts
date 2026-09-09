@@ -1,6 +1,6 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { GoogleBooksService } from './google-books.service';
-import { BooksPaginationDto } from './dto/books-pagination.dto';
+import { BooksPaginationDto } from '../dto/books-pagination.dto';
 
 @Controller('books')
 export class BooksController {
