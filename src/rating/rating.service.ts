@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { UpdateRatingDto } from './dto/update-rating.dto';
 import { Rating } from './entities/rating.entity';
-import { GoogleBooksService } from '../books/infrastructure/google-books.service';
+import { BooksService } from '../books/application/books.service';
 import { RatingPaginationDto } from './dto/rating-pagination.dto';
 import { buildPaginatedResponse } from 'src/common/dto/paginated-response.dto';
 import { PAGINATION_CONSTANTS } from 'src/common/constants/pagination.constants';
@@ -14,12 +14,12 @@ export class RatingService {
   constructor(
     @InjectRepository(Rating)
     private readonly ratingRepository: Repository<Rating>,
-    private readonly googleBooksService: GoogleBooksService,
+    private readonly booksService: BooksService,
   ) {}
 
   async create(createRatingDto: CreateRatingDto, currentUser: any) {
-    // Validate that the book exists on Google Books
-    await this.googleBooksService.getBookById(createRatingDto.googleBookId);
+    // Valida que o livro existe via camada agnóstica (antes Google Books)
+    await this.booksService.getBookById(createRatingDto.googleBookId);
 
     // Force the userId to be the authenticated user's ID
     const rating = this.ratingRepository.create({
@@ -52,12 +52,12 @@ export class RatingService {
       take: limit,
     });
 
-    // Enrich each rating with book data (only page)
+    // Enrich each rating with book data (only page) – agnóstico
     const ratingsWithBooks = await Promise.all(
       ratings.map(async (rating) => {
         try {
-          const book = await this.googleBooksService.getBookById(rating.googleBookId);
-          return { ...rating, book };
+          const book = await this.booksService.getBookById(rating.googleBookId);
+          return { ...rating, book: (book as any).toResponseDto ? (book as any).toResponseDto() : book };
         } catch {
           return { ...rating, book: null };
         }
@@ -83,8 +83,8 @@ export class RatingService {
     }
 
     try {
-      const book = await this.googleBooksService.getBookById(rating.googleBookId);
-      return { ...rating, book };
+      const book = await this.booksService.getBookById(rating.googleBookId);
+      return { ...rating, book: (book as any).toResponseDto ? (book as any).toResponseDto() : book };
     } catch {
       return { ...rating, book: null };
     }
@@ -100,7 +100,7 @@ export class RatingService {
     this.checkOwnershipOrAdmin(rating, currentUser);
 
     if (updateRatingDto.googleBookId) {
-      await this.googleBooksService.getBookById(updateRatingDto.googleBookId);
+      await this.booksService.getBookById(updateRatingDto.googleBookId);
     }
 
     Object.assign(rating, updateRatingDto);

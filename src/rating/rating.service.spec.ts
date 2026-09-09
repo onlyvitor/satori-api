@@ -4,13 +4,14 @@ import { Repository } from 'typeorm';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { RatingService } from './rating.service';
 import { Rating } from './entities/rating.entity';
-import { GoogleBooksService } from '../books/infrastructure/google-books.service';
+import { BooksService } from '../books/application/books.service';
+import { Book } from '../books/domain/entities/book.entity';
 import { Status } from './status.enum';
 
 describe('RatingService', () => {
   let service: RatingService;
   let ratingRepository: jest.Mocked<Repository<Rating>>;
-  let googleBooksService: jest.Mocked<GoogleBooksService>;
+  let booksService: jest.Mocked<BooksService>;
 
   const mockRating = {
     id: 1,
@@ -22,7 +23,7 @@ describe('RatingService', () => {
     user: { id: 1, name: 'John' } as any,
   } as Rating;
 
-  const mockBook = {
+  const mockBookDto = {
     id: 'abc123',
     title: 'Test Book',
     authors: ['Author'],
@@ -31,6 +32,8 @@ describe('RatingService', () => {
     publishedDate: '2020',
     pageCount: 200,
   };
+
+  const mockBook = Book.create({ ...mockBookDto, provider: 'google' });
 
   const mockRepository = {
     create: jest.fn(),
@@ -41,7 +44,7 @@ describe('RatingService', () => {
     remove: jest.fn(),
   };
 
-  const mockGoogleBooksService = {
+  const mockBooksService = {
     getBookById: jest.fn(),
     searchBooks: jest.fn(),
   };
@@ -57,13 +60,13 @@ describe('RatingService', () => {
       providers: [
         RatingService,
         { provide: getRepositoryToken(Rating), useValue: mockRepository },
-        { provide: GoogleBooksService, useValue: mockGoogleBooksService },
+        { provide: BooksService, useValue: mockBooksService },
       ],
     }).compile();
 
     service = module.get<RatingService>(RatingService);
     ratingRepository = module.get(getRepositoryToken(Rating));
-    googleBooksService = module.get(GoogleBooksService);
+    booksService = module.get(BooksService);
   });
 
   it('should be defined', () => {
@@ -80,14 +83,14 @@ describe('RatingService', () => {
     };
 
     it('should create rating successfully and force userId from currentUser', async () => {
-      mockGoogleBooksService.getBookById.mockResolvedValue(mockBook as any);
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
       const created = { ...createDto, userId: currentUser.sub };
       mockRepository.create.mockReturnValue(created as any);
       mockRepository.save.mockResolvedValue({ id: 1, ...created } as any);
 
       const result = await service.create(createDto, currentUser);
 
-      expect(mockGoogleBooksService.getBookById).toHaveBeenCalledWith('abc123');
+      expect(mockBooksService.getBookById).toHaveBeenCalledWith('abc123');
       expect(mockRepository.create).toHaveBeenCalledWith({
         ...createDto,
         userId: currentUser.sub,
@@ -99,7 +102,7 @@ describe('RatingService', () => {
     });
 
     it('should ignore userId from dto and use currentUser.sub', async () => {
-      mockGoogleBooksService.getBookById.mockResolvedValue(mockBook as any);
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
       mockRepository.create.mockReturnValue({} as any);
       mockRepository.save.mockResolvedValue({} as any);
 
@@ -109,7 +112,7 @@ describe('RatingService', () => {
     });
 
     it('should propagate error when googleBookId invalid (getBookById throws)', async () => {
-      mockGoogleBooksService.getBookById.mockRejectedValue(new NotFoundException('not found'));
+      mockBooksService.getBookById.mockRejectedValue(new NotFoundException('not found'));
 
       await expect(service.create(createDto, currentUser)).rejects.toThrow(NotFoundException);
       expect(mockRepository.create).not.toHaveBeenCalled();
@@ -117,13 +120,13 @@ describe('RatingService', () => {
     });
 
     it('should call getBookById with correct googleBookId', async () => {
-      mockGoogleBooksService.getBookById.mockResolvedValue(mockBook as any);
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
       mockRepository.create.mockReturnValue({} as any);
       mockRepository.save.mockResolvedValue({} as any);
 
       await service.create({ ...createDto, googleBookId: 'xyz' }, currentUser);
 
-      expect(mockGoogleBooksService.getBookById).toHaveBeenCalledWith('xyz');
+      expect(mockBooksService.getBookById).toHaveBeenCalledWith('xyz');
     });
   });
 
@@ -131,20 +134,20 @@ describe('RatingService', () => {
     it('should return all ratings with book enrichment when no filter', async () => {
       const ratings = [mockRating, { ...mockRating, id: 2, googleBookId: 'def456' }];
       mockRepository.findAndCount.mockResolvedValue([ratings, 2] as any);
-      mockGoogleBooksService.getBookById.mockResolvedValue(mockBook as any);
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
 
       const result = await service.findAll();
 
       expect(mockRepository.findAndCount).toHaveBeenCalledWith({ where: {}, relations: ['user'], order: { id: 'DESC' }, skip: 0, take: 10 });
-      expect(mockGoogleBooksService.getBookById).toHaveBeenCalledTimes(2);
+      expect(mockBooksService.getBookById).toHaveBeenCalledTimes(2);
       expect(result.data).toHaveLength(2);
-      expect(result.data[0]).toEqual(expect.objectContaining({ ...mockRating, book: mockBook }));
+      expect(result.data[0]).toEqual(expect.objectContaining({ ...mockRating, book: mockBookDto }));
       expect(result.meta).toEqual({ total: 2, page: 1, limit: 10, totalPages: 1, hasNextPage: false, hasPrevPage: false });
     });
 
     it('should filter by googleBookId when provided', async () => {
       mockRepository.findAndCount.mockResolvedValue([[mockRating], 1] as any);
-      mockGoogleBooksService.getBookById.mockResolvedValue(mockBook as any);
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
 
       const result = await service.findAll('abc123');
 
@@ -160,7 +163,7 @@ describe('RatingService', () => {
 
     it('should return ratings with book null when googleBooks fails', async () => {
       mockRepository.findAndCount.mockResolvedValue([[mockRating], 1] as any);
-      mockGoogleBooksService.getBookById.mockRejectedValue(new Error('failed'));
+      mockBooksService.getBookById.mockRejectedValue(new Error('failed'));
 
       const result = await service.findAll();
 
@@ -173,13 +176,13 @@ describe('RatingService', () => {
         { ...mockRating, id: 2, googleBookId: 'bad' },
       ];
       mockRepository.findAndCount.mockResolvedValue([ratings, 2] as any);
-      mockGoogleBooksService.getBookById
+      mockBooksService.getBookById
         .mockResolvedValueOnce(mockBook as any)
         .mockRejectedValueOnce(new Error('not found'));
 
       const result = await service.findAll();
 
-      expect(result.data[0].book).toEqual(mockBook);
+      expect(result.data[0].book).toEqual(mockBookDto);
       expect(result.data[1].book).toBeNull();
     });
 
@@ -190,7 +193,7 @@ describe('RatingService', () => {
 
       expect(result.data).toEqual([]);
       expect(result.meta.total).toBe(0);
-      expect(mockGoogleBooksService.getBookById).not.toHaveBeenCalled();
+      expect(mockBooksService.getBookById).not.toHaveBeenCalled();
     });
 
     it('should not call getBookById when no ratings', async () => {
@@ -198,12 +201,12 @@ describe('RatingService', () => {
 
       await service.findAll('filter');
 
-      expect(mockGoogleBooksService.getBookById).not.toHaveBeenCalled();
+      expect(mockBooksService.getBookById).not.toHaveBeenCalled();
     });
 
     it('should handle pagination with page and limit', async () => {
       mockRepository.findAndCount.mockResolvedValue([[mockRating], 15] as any);
-      mockGoogleBooksService.getBookById.mockResolvedValue(mockBook as any);
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
 
       const result = await service.findAll({ page: 2, limit: 5 } as any);
 
@@ -215,18 +218,18 @@ describe('RatingService', () => {
   describe('findOne', () => {
     it('should return rating with book when found', async () => {
       mockRepository.findOne.mockResolvedValue(mockRating as any);
-      mockGoogleBooksService.getBookById.mockResolvedValue(mockBook as any);
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
 
       const result = await service.findOne(1);
 
       expect(mockRepository.findOne).toHaveBeenCalledWith({ where: { id: 1 }, relations: ['user'] });
-      expect(mockGoogleBooksService.getBookById).toHaveBeenCalledWith('abc123');
-      expect(result).toEqual(expect.objectContaining({ ...mockRating, book: mockBook }));
+      expect(mockBooksService.getBookById).toHaveBeenCalledWith('abc123');
+      expect(result).toEqual(expect.objectContaining({ ...mockRating, book: mockBookDto }));
     });
 
     it('should return rating with book null when book fetch fails', async () => {
       mockRepository.findOne.mockResolvedValue(mockRating as any);
-      mockGoogleBooksService.getBookById.mockRejectedValue(new Error('not found'));
+      mockBooksService.getBookById.mockRejectedValue(new Error('not found'));
 
       const result = await service.findOne(1);
 
@@ -238,7 +241,7 @@ describe('RatingService', () => {
 
       await expect(service.findOne(999)).rejects.toThrow(NotFoundException);
       await expect(service.findOne(999)).rejects.toThrow('Rating #999 not found');
-      expect(mockGoogleBooksService.getBookById).not.toHaveBeenCalled();
+      expect(mockBooksService.getBookById).not.toHaveBeenCalled();
     });
 
     it('should include correct message in NotFoundException', async () => {
@@ -300,12 +303,12 @@ describe('RatingService', () => {
     it('should validate new googleBookId when provided', async () => {
       const existing = { ...mockRating, userId: currentUser.sub };
       mockRepository.findOne.mockResolvedValue(existing as any);
-      mockGoogleBooksService.getBookById.mockResolvedValue(mockBook as any);
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
       mockRepository.save.mockResolvedValue({ ...existing, googleBookId: 'newId' } as any);
 
       await service.update(1, { googleBookId: 'newId' }, currentUser);
 
-      expect(mockGoogleBooksService.getBookById).toHaveBeenCalledWith('newId');
+      expect(mockBooksService.getBookById).toHaveBeenCalledWith('newId');
     });
 
     it('should not call getBookById when googleBookId not in updateDto', async () => {
@@ -315,13 +318,13 @@ describe('RatingService', () => {
 
       await service.update(1, { score: 3 }, currentUser);
 
-      expect(mockGoogleBooksService.getBookById).not.toHaveBeenCalled();
+      expect(mockBooksService.getBookById).not.toHaveBeenCalled();
     });
 
     it('should throw when new googleBookId invalid', async () => {
       const existing = { ...mockRating, userId: currentUser.sub };
       mockRepository.findOne.mockResolvedValue(existing as any);
-      mockGoogleBooksService.getBookById.mockRejectedValue(new NotFoundException('book not found'));
+      mockBooksService.getBookById.mockRejectedValue(new NotFoundException('book not found'));
 
       await expect(service.update(1, { googleBookId: 'invalid' }, currentUser)).rejects.toThrow(
         NotFoundException,
@@ -336,7 +339,7 @@ describe('RatingService', () => {
       await expect(service.update(1, { googleBookId: 'newId' }, currentUser)).rejects.toThrow(
         ForbiddenException,
       );
-      expect(mockGoogleBooksService.getBookById).not.toHaveBeenCalled();
+      expect(mockBooksService.getBookById).not.toHaveBeenCalled();
     });
 
     it('should Object.assign correctly', async () => {
