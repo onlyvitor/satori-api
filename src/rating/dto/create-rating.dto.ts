@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsNotEmpty, IsString, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min, ValidateIf } from 'class-validator';
 import { Status } from '../status.enum';
 
 export class CreateRatingDto {
@@ -15,9 +15,17 @@ export class CreateRatingDto {
   status: Status;
 
   @IsString()
+  @ValidateIf((o) => !o.bookId)
   @IsNotEmpty()
-  googleBookId: string;
+  googleBookId?: string;
+
+  @IsString()
+  @ValidateIf((o) => !o.googleBookId)
+  @IsOptional()
+  @IsNotEmpty()
+  bookId?: string;
 
   @IsInt()
+  @IsOptional()
   userId: number;
 }

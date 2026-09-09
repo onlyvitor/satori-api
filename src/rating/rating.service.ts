@@ -17,15 +17,24 @@ export class RatingService {
     private readonly booksService: BooksService,
   ) {}
 
-  async create(createRatingDto: CreateRatingDto, currentUser: any) {
-    // Valida que o livro existe via camada agnóstica (antes Google Books)
-    await this.booksService.getBookById(createRatingDto.googleBookId);
+  private resolveBookId(dto: any): string | undefined {
+    return dto?.bookId ?? dto?.googleBookId ?? dto?.effectiveBookId;
+  }
 
-    // Force the userId to be the authenticated user's ID
+  async create(createRatingDto: CreateRatingDto, currentUser: any) {
+    const bookId = this.resolveBookId(createRatingDto);
+    if (!bookId) {
+      throw new NotFoundException('Livro não informado');
+    }
+    // Valida que o livro existe via camada agnóstica (antes Google Books)
+    await this.booksService.getBookById(bookId);
+
+    // Force the userId to be the authenticated user's ID e normaliza bookId
     const rating = this.ratingRepository.create({
       ...createRatingDto,
+      googleBookId: bookId,
       userId: currentUser.sub,
-    });
+    } as any);
     return this.ratingRepository.save(rating);
   }
 
@@ -40,8 +49,9 @@ export class RatingService {
     const page = dto.page ?? PAGINATION_CONSTANTS.DEFAULT_PAGE;
     const limit = dto.limit ?? PAGINATION_CONSTANTS.RATING.DEFAULT_LIMIT;
     const where: any = {};
-    if (dto.googleBookId) {
-      where.googleBookId = dto.googleBookId;
+    const effectiveBookId = this.resolveBookId(dto) ?? (dto as any).effectiveBookId;
+    if (effectiveBookId) {
+      where.googleBookId = effectiveBookId;
     }
 
     const [ratings, total] = await this.ratingRepository.findAndCount({
@@ -99,8 +109,11 @@ export class RatingService {
 
     this.checkOwnershipOrAdmin(rating, currentUser);
 
-    if (updateRatingDto.googleBookId) {
-      await this.booksService.getBookById(updateRatingDto.googleBookId);
+    const newBookId = this.resolveBookId(updateRatingDto);
+    if (newBookId) {
+      await this.booksService.getBookById(newBookId);
+      // normaliza para coluna googleBookId (agnóstica)
+      (updateRatingDto as any).googleBookId = newBookId;
     }
 
     Object.assign(rating, updateRatingDto);

@@ -20,6 +20,15 @@ export class RatingPaginationDto {
   @IsString()
   googleBookId?: string;
 
+  @IsOptional()
+  @IsString()
+  bookId?: string;
+
+  // Alias agnóstico: bookId <-> googleBookId
+  get effectiveBookId(): string | undefined {
+    return this.bookId ?? this.googleBookId;
+  }
+
   get skip(): number {
     const page = this.page ?? PAGINATION_CONSTANTS.DEFAULT_PAGE;
     const limit = this.limit ?? PAGINATION_CONSTANTS.RATING.DEFAULT_LIMIT;

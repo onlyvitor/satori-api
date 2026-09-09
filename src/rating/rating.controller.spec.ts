@@ -99,7 +99,7 @@ describe('RatingController', () => {
       mockRatingService.create.mockResolvedValue({ ...mockRating, status: Status.READING } as any);
       const req = { user: currentUser } as any;
 
-      const result = await controller.create(dtoWithReading, req);
+      const result = await controller.create(dtoWithReading, req) as any;
 
       expect(service.create).toHaveBeenCalledWith(dtoWithReading, currentUser);
       expect(result.status).toBe(Status.READING);

@@ -14,7 +14,8 @@ export class BooksController {
   }
 
   @Get(':bookId')
-  async findOne(@Param('bookId') bookId: string) {
+  async findOne(@Param() params: any) {
+    const bookId = typeof params === 'string' ? params : (params.bookId ?? params.googleBookId);
     const book = await this.booksService.getBookById(bookId);
     return book.toResponseDto();
   }

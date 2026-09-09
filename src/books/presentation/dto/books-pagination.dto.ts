@@ -29,11 +29,18 @@ export class BooksPaginationDto {
     return this.limit ?? PAGINATION_CONSTANTS.BOOKS.DEFAULT_LIMIT;
   }
 
-  // Para Google Books API, startIndex = skip
+  /**
+   * @deprecated - mantido apenas para compatibilidade legada.
+   * Use skip/take (agnóstico). Adapter converte internamente para startIndex/maxResults.
+   */
   get startIndex(): number {
     return this.skip;
   }
 
+  /**
+   * @deprecated - mantido apenas para compatibilidade legada.
+   * Use take. Adapter aplica Math.min(limit, GOOGLE_MAX).
+   */
   get maxResults(): number {
     return this.take;
   }

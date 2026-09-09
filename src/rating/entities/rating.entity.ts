@@ -26,4 +26,12 @@ export class Rating {
 
     @Column()
     googleBookId: string;
+
+    // Alias agnóstico: bookId <-> googleBookId para desacoplamento gradual
+    get bookId(): string {
+        return this.googleBookId;
+    }
+    set bookId(value: string) {
+        this.googleBookId = value;
+    }
 }
