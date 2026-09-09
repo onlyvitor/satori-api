@@ -1,12 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BooksController } from '../../books.controller';
-import { GoogleBooksService } from '../../google-books.service';
+import { BooksService } from '../../../application/books.service';
+import { Book } from '../../../domain/entities/book.entity';
 
 describe('BooksController', () => {
   let controller: BooksController;
-  let service: jest.Mocked<GoogleBooksService>;
+  let service: jest.Mocked<BooksService>;
 
-  const mockBook = {
+  const mockBookDto = {
     id: 'abc123',
     title: 'Test Book',
     authors: ['Author'],
@@ -16,7 +17,9 @@ describe('BooksController', () => {
     pageCount: 200,
   };
 
-  const mockGoogleBooksService = {
+  const mockBook = Book.create({ ...mockBookDto, provider: 'google' });
+
+  const mockBooksService = {
     searchBooks: jest.fn(),
     getBookById: jest.fn(),
   };
@@ -26,11 +29,11 @@ describe('BooksController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [BooksController],
-      providers: [{ provide: GoogleBooksService, useValue: mockGoogleBooksService }],
+      providers: [{ provide: BooksService, useValue: mockBooksService }],
     }).compile();
 
     controller = module.get<BooksController>(BooksController);
-    service = module.get(GoogleBooksService);
+    service = module.get(BooksService);
   });
 
   it('should be defined', () => {
@@ -38,18 +41,18 @@ describe('BooksController', () => {
   });
 
   describe('search', () => {
-    it('should call googleBooksService.searchBooks with query', async () => {
-      mockGoogleBooksService.searchBooks.mockResolvedValue([mockBook] as any);
+    it('should call booksService.searchBooks with query', async () => {
+      mockBooksService.searchBooks.mockResolvedValue([mockBook] as any);
 
       const result = await controller.search({ q: 'test query' } as any);
 
       expect(service.searchBooks).toHaveBeenCalledWith('test query', { q: 'test query' });
       expect(service.searchBooks).toHaveBeenCalledTimes(1);
-      expect(result).toEqual([mockBook]);
+      expect(result).toEqual([mockBookDto]);
     });
 
     it('should return empty array when no books found', async () => {
-      mockGoogleBooksService.searchBooks.mockResolvedValue([]);
+      mockBooksService.searchBooks.mockResolvedValue([]);
 
       const result = await controller.search({ q: 'nonexistent' } as any);
 
@@ -58,8 +61,8 @@ describe('BooksController', () => {
     });
 
     it('should handle multiple books', async () => {
-      const books = [mockBook, { ...mockBook, id: 'def456', title: 'Second' }];
-      mockGoogleBooksService.searchBooks.mockResolvedValue(books as any);
+      const secondBook = Book.create({ id: 'def456', title: 'Second', authors: ['Author'], description: 'Desc', thumbnail: 'thumb', publishedDate: '2020', pageCount: 200 });
+      mockBooksService.searchBooks.mockResolvedValue([mockBook, secondBook] as any);
 
       const result = await controller.search({ q: 'query' } as any);
 
@@ -69,13 +72,13 @@ describe('BooksController', () => {
 
     it('should propagate errors from service', async () => {
       const error = new Error('API error');
-      mockGoogleBooksService.searchBooks.mockRejectedValue(error);
+      mockBooksService.searchBooks.mockRejectedValue(error);
 
       await expect(controller.search({ q: 'query' } as any)).rejects.toThrow(error);
     });
 
     it('should pass exact query string', async () => {
-      mockGoogleBooksService.searchBooks.mockResolvedValue([] as any);
+      mockBooksService.searchBooks.mockResolvedValue([] as any);
 
       await controller.search({ q: 'Harry Potter' } as any);
 
@@ -83,7 +86,7 @@ describe('BooksController', () => {
     });
 
     it('should handle empty query', async () => {
-      mockGoogleBooksService.searchBooks.mockResolvedValue([] as any);
+      mockBooksService.searchBooks.mockResolvedValue([] as any);
 
       await controller.search({ q: '' } as any);
 
@@ -91,7 +94,7 @@ describe('BooksController', () => {
     });
 
     it('should handle query with special characters', async () => {
-      mockGoogleBooksService.searchBooks.mockResolvedValue([] as any);
+      mockBooksService.searchBooks.mockResolvedValue([] as any);
 
       await controller.search({ q: 'C++ Programming' } as any);
 
@@ -99,7 +102,7 @@ describe('BooksController', () => {
     });
 
     it('should pass pagination to service', async () => {
-      mockGoogleBooksService.searchBooks.mockResolvedValue([] as any);
+      mockBooksService.searchBooks.mockResolvedValue([] as any);
       const pagination: any = { q: 'query', page: 2, limit: 5 };
 
       await controller.search(pagination);
@@ -109,23 +112,19 @@ describe('BooksController', () => {
   });
 
   describe('findOne', () => {
-    it('should call googleBooksService.getBookById with googleBookId', async () => {
-      mockGoogleBooksService.getBookById.mockResolvedValue(mockBook as any);
+    it('should call booksService.getBookById with bookId', async () => {
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
 
       const result = await controller.findOne('abc123');
 
       expect(service.getBookById).toHaveBeenCalledWith('abc123');
       expect(service.getBookById).toHaveBeenCalledTimes(1);
-      expect(result).toEqual(mockBook);
+      expect(result).toEqual(mockBookDto);
     });
 
     it('should return book details correctly', async () => {
-      const detailedBook = {
-        ...mockBook,
-        description: 'Detailed description',
-        pageCount: 500,
-      };
-      mockGoogleBooksService.getBookById.mockResolvedValue(detailedBook as any);
+      const detailedBook = Book.create({ ...mockBookDto, description: 'Detailed description', pageCount: 500 });
+      mockBooksService.getBookById.mockResolvedValue(detailedBook as any);
 
       const result = await controller.findOne('abc123');
 
@@ -135,14 +134,14 @@ describe('BooksController', () => {
 
     it('should propagate NotFound error from service', async () => {
       const error = new Error('Livro com ID "invalid" não encontrado');
-      mockGoogleBooksService.getBookById.mockRejectedValue(error);
+      mockBooksService.getBookById.mockRejectedValue(error);
 
       await expect(controller.findOne('invalid')).rejects.toThrow(error);
       expect(service.getBookById).toHaveBeenCalledWith('invalid');
     });
 
-    it('should handle different googleBookId formats', async () => {
-      mockGoogleBooksService.getBookById.mockResolvedValue(mockBook as any);
+    it('should handle different bookId formats', async () => {
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
 
       await controller.findOne('zyTCAlFPjgYC');
 
@@ -150,7 +149,7 @@ describe('BooksController', () => {
     });
 
     it('should handle numeric-like id', async () => {
-      mockGoogleBooksService.getBookById.mockResolvedValue(mockBook as any);
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
 
       await controller.findOne('12345');
 
