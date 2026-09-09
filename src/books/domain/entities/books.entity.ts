@@ -6,6 +6,7 @@ export class BookEntity {
     constructor(
         private title:string,
         private author:string,
+        private coverURL: String,
         private description:string ,
         bookProviderId?: unknown
     ){
