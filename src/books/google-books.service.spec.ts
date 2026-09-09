@@ -303,6 +303,24 @@ describe('GoogleBooksService', () => {
 
       expect(result[0].thumbnail).toBe('');
     });
+
+    it('should handle legacy string pagination param', async () => {
+      mockHttpService.get.mockReturnValue(of({ data: { items: [] } }) as any);
+      const result = await service.searchBooks('query', '' as any);
+      expect(result).toEqual([]);
+      expect(httpService.get).toHaveBeenCalledWith(expect.any(String), {
+        params: { q: 'query', startIndex: 0, maxResults: 10 },
+      });
+    });
+
+    it('should handle pagination with string and API key', async () => {
+      process.env.GOOGLE_BOOKS_API_KEY = 'key';
+      mockHttpService.get.mockReturnValue(of({ data: { items: [] } }) as any);
+      await service.searchBooks('query', 'legacy' as any);
+      expect(httpService.get).toHaveBeenCalledWith(expect.any(String), {
+        params: { q: 'query', startIndex: 0, maxResults: 10, key: 'key' },
+      });
+    });
   });
 
   describe('getBookById', () => {
