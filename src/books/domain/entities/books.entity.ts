@@ -2,15 +2,28 @@ import { randomUUID, UUID } from "crypto";
 
 export class BookEntity {
     private readonly id: UUID;
-    private readonly bookProviderId:unknown;
     constructor(
         private title:string,
         private author:string,
-        private coverURL: String,
-        private description:string ,
-        bookProviderId?: unknown
+        private coverURL: string,
+        private description:string,
+        private bookProviderId?: unknown
     ){
         this.id = randomUUID();
-        this.bookProviderId;
+    }
+
+    public create(
+        title:string,
+        author:string,
+        coverURL:string,
+        description:string,
+        bookProviderId:unknown
+    ):BookEntity{
+        return new BookEntity(
+            title,
+            author,
+            coverURL,
+            description
+        );
     }
 }
