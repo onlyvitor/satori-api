@@ -1,5 +1,4 @@
-import { Book } from './book.entity';
-import { Book as BookAlias, LegacyBookEntity } from './books.entity';
+import { Book, BookEntity } from './book.entity';
 
 describe('Book (domain entity)', () => {
   it('should create via constructor with all fields', () => {
@@ -86,24 +85,17 @@ describe('Book (domain entity)', () => {
     expect((book.toResponseDto() as any).provider).toBeUndefined();
   });
 
-  it('should re-export Book as BookEntity via books.entity', () => {
-    expect(BookAlias).toBe(Book);
-    const book = new BookAlias('1', 'T', [], '', '', '', 0);
+  it('should re-export Book as BookEntity', () => {
+    expect(BookEntity).toBe(Book);
+    const book = new BookEntity('1', 'T', [], '', '', '', 0);
     expect(book).toBeInstanceOf(Book);
+    expect(book.id).toBe('1');
   });
 
-  it('should create via LegacyBookEntity and createLegacy factory', () => {
-    const legacy = new LegacyBookEntity('Legacy Title', 'Legacy Author', 'cover.jpg', 'Desc', 'providerX');
-    expect(legacy.title).toBe('Legacy Title');
-    expect(legacy.authors).toEqual(['Legacy Author']);
-    expect(legacy.thumbnail).toBe('cover.jpg');
-
-    const viaFactory = LegacyBookEntity.createLegacy('T', 'A', 'c.jpg', 'D', 'pid123');
-    expect(viaFactory.id).toBe('pid123');
-    expect(viaFactory.provider).toBe('pid123');
-    expect(viaFactory.title).toBe('T');
-
-    const viaFactoryNoId = LegacyBookEntity.createLegacy('T2', 'A2', 'c2', 'D2');
-    expect(viaFactoryNoId.id).toBe('');
+  it('should create identical instance via BookEntity alias', () => {
+    const viaAlias = BookEntity.create({ id: 'alias1', title: 'Alias Book', authors: ['A'] });
+    expect(viaAlias).toBeInstanceOf(Book);
+    expect(viaAlias.id).toBe('alias1');
+    expect(viaAlias.title).toBe('Alias Book');
   });
 });
