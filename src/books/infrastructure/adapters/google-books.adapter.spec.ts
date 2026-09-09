@@ -141,6 +141,24 @@ describe('GoogleBooksAdapter', () => {
       expect(result[0].authors).toEqual([]);
       expect(result[0].pageCount).toBe(0);
     });
+
+    it('should handle legacy string pagination param', async () => {
+      mockHttpService.get.mockReturnValue(of({ data: { items: [] } }) as any);
+      const result = await adapter.search('query', '' as any);
+      expect(result).toEqual([]);
+      expect(httpService.get).toHaveBeenCalledWith(expect.any(String), {
+        params: { q: 'query', startIndex: 0, maxResults: 10 },
+      });
+    });
+
+    it('should handle string with API key still fallback correctly', async () => {
+      process.env.GOOGLE_BOOKS_API_KEY = 'key';
+      mockHttpService.get.mockReturnValue(of({ data: { items: [] } }) as any);
+      await adapter.search('query', 'legacy' as any);
+      expect(httpService.get).toHaveBeenCalledWith(expect.any(String), {
+        params: { q: 'query', startIndex: 0, maxResults: 10, key: 'key' },
+      });
+    });
   });
 
   describe('findById', () => {

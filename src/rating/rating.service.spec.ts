@@ -426,4 +426,75 @@ describe('RatingService', () => {
       );
     });
   });
+
+  describe('agnostic bookId alias', () => {
+    it('should create with bookId alias', async () => {
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
+      mockRepository.create.mockReturnValue({} as any);
+      mockRepository.save.mockResolvedValue({} as any);
+      await service.create({ score: 5, comment: 'x', status: Status.FINISHED, bookId: 'b-alias' } as any, currentUser);
+      expect(mockBooksService.getBookById).toHaveBeenCalledWith('b-alias');
+      expect(mockRepository.create).toHaveBeenCalledWith(expect.objectContaining({ googleBookId: 'b-alias' }));
+    });
+
+    it('should throw when neither bookId nor googleBookId provided', async () => {
+      await expect(service.create({ score: 5, comment: 'x', status: Status.FINISHED } as any, currentUser)).rejects.toThrow(NotFoundException);
+      await expect(service.create({ score: 5, comment: 'x', status: Status.FINISHED } as any, currentUser)).rejects.toThrow('Livro não informado');
+      expect(mockBooksService.getBookById).not.toHaveBeenCalled();
+    });
+
+    it('should prioritize bookId over googleBookId', async () => {
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
+      mockRepository.create.mockReturnValue({} as any);
+      mockRepository.save.mockResolvedValue({} as any);
+      await service.create({ score: 5, comment: 'x', status: Status.FINISHED, bookId: 'b1', googleBookId: 'g1' } as any, currentUser);
+      expect(mockBooksService.getBookById).toHaveBeenCalledWith('b1');
+    });
+
+    it('should filter by bookId alias in findAll', async () => {
+      mockRepository.findAndCount.mockResolvedValue([[mockRating], 1] as any);
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
+      await service.findAll({ bookId: 'b123' } as any);
+      expect(mockRepository.findAndCount).toHaveBeenCalledWith(expect.objectContaining({ where: { googleBookId: 'b123' } }));
+    });
+
+    it('should filter by effectiveBookId alias in findAll', async () => {
+      mockRepository.findAndCount.mockResolvedValue([[mockRating], 1] as any);
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
+      await service.findAll({ effectiveBookId: 'eff123' } as any);
+      expect(mockRepository.findAndCount).toHaveBeenCalledWith(expect.objectContaining({ where: { googleBookId: 'eff123' } }));
+    });
+
+    it('should handle findAllLegacy', async () => {
+      mockRepository.findAndCount.mockResolvedValue([[mockRating], 1] as any);
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
+      const result = await service.findAllLegacy('legacy123');
+      expect(mockRepository.findAndCount).toHaveBeenCalledWith(expect.objectContaining({ where: { googleBookId: 'legacy123' } }));
+      expect(result.data).toHaveLength(1);
+    });
+
+    it('should handle findAllLegacy with undefined', async () => {
+      mockRepository.findAndCount.mockResolvedValue([[], 0] as any);
+      const result = await service.findAllLegacy(undefined);
+      expect(mockRepository.findAndCount).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
+      expect(result.data).toEqual([]);
+    });
+
+    it('should update with bookId alias', async () => {
+      const existing = { ...mockRating, userId: currentUser.sub };
+      mockRepository.findOne.mockResolvedValue(existing as any);
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
+      mockRepository.save.mockResolvedValue(existing as any);
+      await service.update(1, { bookId: 'newB' } as any, currentUser);
+      expect(mockBooksService.getBookById).toHaveBeenCalledWith('newB');
+    });
+
+    it('should handle enrichment when book returns plain DTO without toResponseDto', async () => {
+      const plainDto = { ...mockBookDto };
+      mockRepository.findAndCount.mockResolvedValue([[mockRating], 1] as any);
+      mockBooksService.getBookById.mockResolvedValue(plainDto as any);
+      const result = await service.findAll();
+      expect(result.data[0].book).toEqual(plainDto);
+    });
+  });
 });

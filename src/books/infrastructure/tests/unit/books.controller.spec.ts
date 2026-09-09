@@ -155,5 +155,25 @@ describe('BooksController', () => {
 
       expect(service.getBookById).toHaveBeenCalledWith('12345');
     });
+
+    it('should handle object param with bookId', async () => {
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
+      const result = await controller.findOne({ bookId: 'abc123' } as any);
+      expect(service.getBookById).toHaveBeenCalledWith('abc123');
+      expect(result).toEqual(mockBookDto);
+    });
+
+    it('should handle object param with googleBookId alias', async () => {
+      mockBooksService.getBookById.mockResolvedValue(mockBook as any);
+      const result = await controller.findOne({ googleBookId: 'legacy123' } as any);
+      expect(service.getBookById).toHaveBeenCalledWith('legacy123');
+      expect(result).toEqual(mockBookDto);
+    });
+
+    it('should handle undefined q with fallback to empty string', async () => {
+      mockBooksService.searchBooks.mockResolvedValue([] as any);
+      await controller.search({ page: 1, limit: 10 } as any);
+      expect(service.searchBooks).toHaveBeenCalledWith('', { page: 1, limit: 10 });
+    });
   });
 });
