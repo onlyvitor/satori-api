@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { RatingService } from './rating.service';
 import { Rating } from './entities/rating.entity';
-import { GoogleBooksService } from '../books/google-books.service';
+import { GoogleBooksService } from '../books/infrastructure/google-books.service';
 import { Status } from './status.enum';
 
 describe('RatingService', () => {

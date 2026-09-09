@@ -1,8 +1,8 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { BookResponseDto } from './dto/book-response.dto';
-import { BooksPaginationDto } from './dto/books-pagination.dto';
+import { BookResponseDto } from '../presentation/dto/book-response.dto';
+import { BooksPaginationDto } from '../presentation/dto/books-pagination.dto';
 import { PAGINATION_CONSTANTS } from 'src/common/constants/pagination.constants';
 
 @Injectable()

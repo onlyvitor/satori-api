@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BooksController } from './infrastructure/books.controller';
-import { GoogleBooksService } from './google-books.service';
+import { BooksController } from '../../books.controller';
+import { GoogleBooksService } from '../../google-books.service';
 
 describe('BooksController', () => {
   let controller: BooksController;

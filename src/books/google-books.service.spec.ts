@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { HttpService } from '@nestjs/axios';
 import { HttpException, HttpStatus } from '@nestjs/common';
 import { of, throwError } from 'rxjs';
-import { GoogleBooksService } from './google-books.service';
+import { GoogleBooksService } from './infrastructure/google-books.service';
 
 describe('GoogleBooksService', () => {
   let service: GoogleBooksService;

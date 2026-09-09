@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 import { User } from './users/entities/user.entity';
 import { AuthModule } from './auth/auth.module';
 import { RatingModule } from './rating/rating.module';
-import { BooksModule } from './books/infrastructure/tests/unit/books.module';
+import { BooksModule } from './books/infrastructure/books.module';
 import { Rating } from './rating/entities/rating.entity';
 
 dotenv.config();

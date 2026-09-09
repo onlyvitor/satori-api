@@ -3,7 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { RatingService } from './rating.service';
 import { RatingController } from './rating.controller';
 import { Rating } from './entities/rating.entity';
-import { BooksModule } from '../books/infrastructure/tests/unit/books.module';
+import { BooksModule } from '../books/infrastructure/books.module';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Rating]), BooksModule],

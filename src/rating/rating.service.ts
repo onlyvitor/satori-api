@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { UpdateRatingDto } from './dto/update-rating.dto';
 import { Rating } from './entities/rating.entity';
-import { GoogleBooksService } from '../books/google-books.service';
+import { GoogleBooksService } from '../books/infrastructure/google-books.service';
 import { RatingPaginationDto } from './dto/rating-pagination.dto';
 import { buildPaginatedResponse } from 'src/common/dto/paginated-response.dto';
 import { PAGINATION_CONSTANTS } from 'src/common/constants/pagination.constants';
