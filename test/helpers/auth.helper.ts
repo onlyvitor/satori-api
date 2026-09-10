@@ -10,17 +10,7 @@ export async function createUser(
 ) {
   // Tenta via API primeiro (cobre fluxo público), fallback via repo se isAdmin
   if (userDto.isAdmin) {
-    const dataSource = app.get(DataSource);
-    const repo = dataSource.getRepository(User);
-    const hashed = await bcrypt.hash(userDto.password, 10);
-    const user = repo.create({
-      name: userDto.name,
-      email: userDto.email,
-      password: hashed,
-      isAdmin: true,
-    });
-    const saved = await repo.save(user);
-    return saved;
+    return createAdminViaRepo(app, userDto);
   }
 
   const res = await request(app.getHttpServer()).post('/api/users').send({
@@ -32,6 +22,31 @@ export async function createUser(
     throw new Error(`Falha ao criar usuário ${userDto.email}: ${res.status} ${JSON.stringify(res.body)}`);
   }
   return res.body;
+}
+
+export async function createAdminViaRepo(
+  app: INestApplication,
+  userDto: { name: string; email: string; password: string; isAdmin?: boolean },
+) {
+  const dataSource = app.get(DataSource);
+  const repo = dataSource.getRepository(User);
+  const hashed = await bcrypt.hash(userDto.password, 10);
+  const user = repo.create({
+    name: userDto.name,
+    email: userDto.email,
+    password: hashed,
+    isAdmin: true,
+  });
+  const saved = await repo.save(user);
+  return saved;
+}
+
+export async function createAdminAndLogin(
+  app: INestApplication,
+  adminDto: { name: string; email: string; password: string },
+) {
+  await createAdminViaRepo(app, { ...adminDto, isAdmin: true });
+  return login(app, adminDto.email, adminDto.password);
 }
 
 export async function login(

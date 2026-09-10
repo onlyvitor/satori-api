@@ -10,3 +10,18 @@ export async function cleanDb(dataSource: DataSource) {
     await dataSource.query(`TRUNCATE ${tableNames} RESTART IDENTITY CASCADE;`);
   }
 }
+
+/** Cria usuário direto no repo (útil para admin) – evita duplicação nos specs */
+export async function createAdminDirect(dataSource: DataSource, adminDto: any) {
+  const { User } = await import('../../src/users/entities/user.entity');
+  const bcrypt = await import('bcrypt');
+  const repo = dataSource.getRepository(User);
+  const hashed = await bcrypt.hash(adminDto.password, 10);
+  const admin = repo.create({
+    name: adminDto.name,
+    email: adminDto.email,
+    password: hashed,
+    isAdmin: true,
+  });
+  return repo.save(admin);
+}

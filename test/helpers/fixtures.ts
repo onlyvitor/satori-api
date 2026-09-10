@@ -42,3 +42,11 @@ export const ratingFixtures = {
     userId: 1,
   },
 };
+
+export function buildCreateRatingPayload(overrides: Partial<typeof ratingFixtures.valid> = {}) {
+  return { ...ratingFixtures.valid, ...overrides };
+}
+
+export function buildUpdateRatingPayload(overrides: Record<string, any> = {}) {
+  return { ...overrides };
+}
