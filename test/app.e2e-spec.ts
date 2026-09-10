@@ -3,6 +3,8 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { createTestApp, closeTestApp, TestAppContext } from './helpers/test-app.helper';
 import { cleanDb } from './helpers/db.helper';
+import { createUserAndLogin } from './helpers/auth.helper';
+import { authHeader } from './helpers/api.helper';
 
 describe('AppController (e2e)', () => {
   let ctx: TestAppContext;
@@ -21,32 +23,23 @@ describe('AppController (e2e)', () => {
     await closeTestApp(ctx);
   });
 
-  it('/api (GET) - deve exigir autenticação (guard global)', async () => {
-    await request(app.getHttpServer()).get('/api').expect(401);
+  const api = () => request(app.getHttpServer());
+
+  it('GET /api deve exigir autenticação', async () => {
+    await api().get('/api').expect(401);
   });
 
-  it('/api (GET) - deve retornar Hello World com token válido', async () => {
-    // cria usuário e loga
-    await request(app.getHttpServer()).post('/api/users').send({
+  it('GET /api deve retornar Hello World com token válido', async () => {
+    const { accessToken } = await createUserAndLogin(app, {
       name: 'tester',
       email: 'tester@app.com',
       password: 'password123',
     });
 
-    const login = await request(app.getHttpServer())
-      .post('/api/auth/login')
-      .send({ email: 'tester@app.com', password: 'password123' });
-
-    const token = login.body.data.accessToken;
-
-    await request(app.getHttpServer())
-      .get('/api')
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200)
-      .expect('Hello World!');
+    await api().get('/api').set(authHeader(accessToken)).expect(200).expect('Hello World!');
   });
 
-  it('/api/users (GET) - deve exigir autenticação', async () => {
-    await request(app.getHttpServer()).get('/api/users').expect(401);
+  it('GET /api/users deve exigir autenticação', async () => {
+    await api().get('/api/users').expect(401);
   });
 });
