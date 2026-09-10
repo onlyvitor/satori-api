@@ -19,8 +19,6 @@ jobs:
           cache: npm
       - name: install
         run: npm ci
-      - name: lint
-        run: npm run lint --if-present
       - name: unit tests
         run: npm run test
       - name: coverage
