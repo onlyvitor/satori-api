@@ -2,15 +2,23 @@ import request from 'supertest';
 import { INestApplication } from '@nestjs/common';
 import { createTestApp, closeTestApp, TestAppContext } from './helpers/test-app.helper';
 import { cleanDb } from './helpers/db.helper';
-import { createUser } from './helpers/auth.helper';
+import { createUser, createAdminViaRepo, login } from './helpers/auth.helper';
 import { userFixtures } from './helpers/fixtures';
-import { DataSource } from 'typeorm';
-import { User } from '../src/users/entities/user.entity';
-import * as bcrypt from 'bcrypt';
+import { authHeader } from './helpers/api.helper';
 
 describe('Auth (e2e)', () => {
   let ctx: TestAppContext;
   let app: INestApplication;
+
+  const api = () => request(app.getHttpServer());
+  const loginAs = (email: string, password: string) =>
+    api().post('/api/auth/login').send({ email, password });
+  const getProfile = (token?: string) => {
+    const req = api().get('/api/auth/profile');
+    if (token) req.set(authHeader(token));
+    return req;
+  };
+  const refresh = (token: string) => api().post('/api/auth/refresh').send({ refreshToken: token });
 
   beforeAll(async () => {
     ctx = await createTestApp();
@@ -30,97 +38,47 @@ describe('Auth (e2e)', () => {
       await createUser(app, userFixtures.john);
     });
 
-    it('deve logar com credenciais válidas e retornar access e refresh tokens', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/api/auth/login')
-        .send({ email: userFixtures.john.email, password: userFixtures.john.password })
-        .expect(201);
+    it('deve logar e retornar access e refresh tokens', async () => {
+      const res = await loginAs(userFixtures.john.email, userFixtures.john.password).expect(201);
 
-      expect(res.body).toHaveProperty('success', true);
-      expect(res.body).toHaveProperty('data.accessToken');
-      expect(res.body).toHaveProperty('data.refreshToken');
-      expect(res.body).toHaveProperty('message', 'Login successful');
+      expect(res.body).toMatchObject({ success: true, message: 'Login successful' });
+      expect(res.body.data).toHaveProperty('accessToken');
+      expect(res.body.data).toHaveProperty('refreshToken');
       expect(typeof res.body.data.accessToken).toBe('string');
-      expect(typeof res.body.data.refreshToken).toBe('string');
     });
 
-    it('deve incluir isAdmin=false no payload para usuário comum', async () => {
-      // Decodifica payload sem verificar assinatura apenas para checar claims
-      const res = await request(app.getHttpServer())
-        .post('/api/auth/login')
-        .send({ email: userFixtures.john.email, password: userFixtures.john.password })
-        .expect(201);
+    it('deve incluir isAdmin=false para usuario comum', async () => {
+      const { body } = await loginAs(userFixtures.john.email, userFixtures.john.password).expect(201);
+      const profile = await getProfile(body.data.accessToken).expect(200);
 
-      const profile = await request(app.getHttpServer())
-        .get('/api/auth/profile')
-        .set('Authorization', `Bearer ${res.body.data.accessToken}`)
-        .expect(200);
-
-      expect(profile.body).toHaveProperty('email', userFixtures.john.email);
-      expect(profile.body).toHaveProperty('isAdmin', false);
+      expect(profile.body).toMatchObject({ email: userFixtures.john.email, isAdmin: false });
       expect(profile.body).toHaveProperty('sub');
     });
 
     it('deve incluir isAdmin=true para admin', async () => {
-      const dataSource = app.get(DataSource);
-      const repo = dataSource.getRepository(User);
-      const hashed = await bcrypt.hash(userFixtures.admin.password, 10);
-      await repo.save(
-        repo.create({
-          name: userFixtures.admin.name,
-          email: userFixtures.admin.email,
-          password: hashed,
-          isAdmin: true,
-        }),
-      );
+      await createAdminViaRepo(app, userFixtures.admin);
 
-      const res = await request(app.getHttpServer())
-        .post('/api/auth/login')
-        .send({ email: userFixtures.admin.email, password: userFixtures.admin.password })
-        .expect(201);
-
-      const profile = await request(app.getHttpServer())
-        .get('/api/auth/profile')
-        .set('Authorization', `Bearer ${res.body.data.accessToken}`)
-        .expect(200);
-
+      const { body } = await loginAs(userFixtures.admin.email, userFixtures.admin.password).expect(201);
+      const profile = await getProfile(body.data.accessToken).expect(200);
       expect(profile.body.isAdmin).toBe(true);
     });
 
     it('deve retornar 401 quando email não existe', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/api/auth/login')
-        .send({ email: 'naoexiste@email.com', password: 'qualquer' })
-        .expect(401);
-
+      const res = await loginAs('naoexiste@email.com', 'qualquer').expect(401);
       expect(res.body.message).toMatch(/Invalid credentials/i);
     });
 
-    it('deve retornar 401 quando senha está incorreta', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/api/auth/login')
-        .send({ email: userFixtures.john.email, password: 'senhaErrada' })
-        .expect(401);
-
+    it('deve retornar 401 quando senha incorreta', async () => {
+      const res = await loginAs(userFixtures.john.email, 'senhaErrada').expect(401);
       expect(res.body.message).toMatch(/Invalid credentials/i);
     });
 
-    it('deve retornar 400 quando body vazio (ValidationPipe)', async () => {
-      await request(app.getHttpServer()).post('/api/auth/login').send({}).expect(400);
-    });
-
-    it('deve retornar 400 quando falta email', async () => {
-      await request(app.getHttpServer())
-        .post('/api/auth/login')
-        .send({ password: '123' })
-        .expect(400);
-    });
-
-    it('deve retornar 400 quando falta password', async () => {
-      await request(app.getHttpServer())
-        .post('/api/auth/login')
-        .send({ email: userFixtures.john.email })
-        .expect(400);
+    it.each([
+      [{}, 'body vazio'],
+      [{ password: '123' }, 'falta email'],
+      [{ email: userFixtures.john.email }, 'falta password'],
+    ])('deve retornar 400 quando %s (%s)', async (payload) => {
+      await api().post('/api/auth/login').send(payload).expect(400);
     });
   });
 
@@ -130,59 +88,34 @@ describe('Auth (e2e)', () => {
 
     beforeEach(async () => {
       await createUser(app, userFixtures.john);
-      const loginRes = await request(app.getHttpServer())
-        .post('/api/auth/login')
-        .send({ email: userFixtures.john.email, password: userFixtures.john.password })
-        .expect(201);
-      refreshToken = loginRes.body.data.refreshToken;
-      accessToken = loginRes.body.data.accessToken;
+      const { body } = await loginAs(userFixtures.john.email, userFixtures.john.password).expect(201);
+      refreshToken = body.data.refreshToken;
+      accessToken = body.data.accessToken;
     });
 
-    it('deve gerar novo par de tokens com refresh token válido', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/api/auth/refresh')
-        .send({ refreshToken })
-        .expect(201);
-
-      expect(res.body).toHaveProperty('success', true);
+    it('deve gerar novo par com refresh válido', async () => {
+      const res = await refresh(refreshToken).expect(201);
+      expect(res.body).toMatchObject({ success: true });
       expect(res.body.data).toHaveProperty('accessToken');
       expect(res.body.data).toHaveProperty('refreshToken');
-      expect(typeof res.body.data.accessToken).toBe('string');
-      expect(typeof res.body.data.refreshToken).toBe('string');
-      // Novo access token deve ser válido para acessar profile
-      await request(app.getHttpServer())
-        .get('/api/auth/profile')
-        .set('Authorization', `Bearer ${res.body.data.accessToken}`)
-        .expect(200);
+
+      await getProfile(res.body.data.accessToken).expect(200);
     });
 
     it('deve retornar 401 quando tenta usar access token como refresh', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/api/auth/refresh')
-        .send({ refreshToken: accessToken })
-        .expect(401);
-
+      const res = await refresh(accessToken).expect(401);
       expect(res.body.message).toMatch(/Invalid refresh token/i);
     });
 
-    it('deve retornar 401 quando token é inválido/malformado', async () => {
-      await request(app.getHttpServer())
-        .post('/api/auth/refresh')
-        .send({ refreshToken: 'invalid.token.here' })
-        .expect(401);
-    });
-
-    it('deve retornar 401 quando token sem type', async () => {
-      // Gera um JWT sem type via login manual? Simula via refresh com token sem type
-      // Para simplificar, testa string vazia
-      await request(app.getHttpServer())
-        .post('/api/auth/refresh')
-        .send({ refreshToken: '' })
-        .expect(401);
+    it.each([
+      ['invalid.token.here', 'token malformado'],
+      ['', 'token vazio/sem type'],
+    ])('deve retornar 401 quando token é %s', async (tok) => {
+      await refresh(tok).expect(401);
     });
 
     it('deve retornar 401 quando não envia refreshToken', async () => {
-      await request(app.getHttpServer()).post('/api/auth/refresh').send({}).expect(401);
+      await api().post('/api/auth/refresh').send({}).expect(401);
     });
   });
 
@@ -192,58 +125,38 @@ describe('Auth (e2e)', () => {
 
     beforeEach(async () => {
       await createUser(app, userFixtures.john);
-      const loginRes = await request(app.getHttpServer())
-        .post('/api/auth/login')
-        .send({ email: userFixtures.john.email, password: userFixtures.john.password })
-        .expect(201);
-      accessToken = loginRes.body.data.accessToken;
-      refreshToken = loginRes.body.data.refreshToken;
+      const { body } = await loginAs(userFixtures.john.email, userFixtures.john.password).expect(201);
+      accessToken = body.data.accessToken;
+      refreshToken = body.data.refreshToken;
     });
 
-    it('deve retornar dados do usuário com access token válido', async () => {
-      const res = await request(app.getHttpServer())
-        .get('/api/auth/profile')
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200);
-
+    it('deve retornar dados com access token válido', async () => {
+      const res = await getProfile(accessToken).expect(200);
+      expect(res.body).toMatchObject({ email: userFixtures.john.email, isAdmin: false });
       expect(res.body).toHaveProperty('sub');
-      expect(res.body).toHaveProperty('email', userFixtures.john.email);
-      expect(res.body).toHaveProperty('isAdmin', false);
     });
 
     it('deve retornar 401 sem token', async () => {
-      const res = await request(app.getHttpServer()).get('/api/auth/profile').expect(401);
+      const res = await getProfile().expect(401);
       expect(res.body.message).toMatch(/No token provided/i);
     });
 
     it('deve retornar 401 com header sem Bearer', async () => {
-      await request(app.getHttpServer())
-        .get('/api/auth/profile')
-        .set('Authorization', accessToken)
-        .expect(401);
+      await api().get('/api/auth/profile').set('Authorization', accessToken).expect(401);
     });
 
-    it('deve retornar 401 quando usa refresh token para autenticar', async () => {
-      const res = await request(app.getHttpServer())
-        .get('/api/auth/profile')
-        .set('Authorization', `Bearer ${refreshToken}`)
-        .expect(401);
+    it('deve retornar 401 com tipo Basic', async () => {
+      await api().get('/api/auth/profile').set('Authorization', 'Basic ' + accessToken).expect(401);
+    });
 
+    it('deve retornar 401 quando usa refresh token', async () => {
+      const res = await getProfile(refreshToken).expect(401);
       expect(res.body.message).toMatch(/Refresh tokens cannot be used/i);
     });
 
     it('deve retornar 401 com token inválido', async () => {
-      await request(app.getHttpServer())
-        .get('/api/auth/profile')
-        .set('Authorization', 'Bearer token.invalido')
-        .expect(401);
-    });
-
-    it('deve retornar 401 com token com espaço extra ou tipo Basic', async () => {
-      await request(app.getHttpServer())
-        .get('/api/auth/profile')
-        .set('Authorization', 'Basic ' + accessToken)
-        .expect(401);
+      await getProfile('token.invalido').expect(401);
+      await api().get('/api/auth/profile').set('Authorization', 'Bearer token.invalido').expect(401);
     });
   });
 });
