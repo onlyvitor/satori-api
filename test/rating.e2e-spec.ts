@@ -143,13 +143,14 @@ describe('Rating (e2e)', () => {
         .expect(400);
     });
 
-    it('deve retornar 400 quando falta userId (DTO exige)', async () => {
+    it('deve criar rating mesmo sem userId (userId é forçado pelo token)', async () => {
       const { userId, ...withoutUserId } = baseDto as any;
-      await request(app.getHttpServer())
+      const res = await request(app.getHttpServer())
         .post('/api/rating')
         .set('Authorization', `Bearer ${johnTokens.accessToken}`)
         .send(withoutUserId)
-        .expect(400);
+        .expect(201);
+      expect(res.body).toHaveProperty('userId', john.id);
     });
 
     it('deve retornar 400 quando envia campo extra não permitido (whitelist)', async () => {
