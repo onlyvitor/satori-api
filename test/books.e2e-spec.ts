@@ -2,13 +2,15 @@ import request from 'supertest';
 import { INestApplication, HttpStatus, HttpException } from '@nestjs/common';
 import { createTestApp, closeTestApp, TestAppContext } from './helpers/test-app.helper';
 import { cleanDb } from './helpers/db.helper';
-import { createUser, login } from './helpers/auth.helper';
+import { createUserAndLogin } from './helpers/auth.helper';
 import { userFixtures, mockBook, mockBook2 } from './helpers/fixtures';
+import { authHeader } from './helpers/api.helper';
 
 describe('Books (e2e)', () => {
   let ctx: TestAppContext;
   let app: INestApplication;
   let accessToken: string;
+  let refreshToken: string;
 
   beforeAll(async () => {
     ctx = await createTestApp();
@@ -17,22 +19,37 @@ describe('Books (e2e)', () => {
 
   beforeEach(async () => {
     await cleanDb(ctx.dataSource);
-    // reseta mocks para padrão de sucesso
-    ctx.mockGoogleBooksService.searchBooks.mockResolvedValue([mockBook, mockBook2]);
-    ctx.mockGoogleBooksService.getBookById.mockImplementation((id: string) => {
-      if (id === mockBook.id) return Promise.resolve(mockBook);
-      if (id === mockBook2.id) return Promise.resolve(mockBook2);
+
+    // Reseta para estado padrão agnóstico – BooksService é a fonte da verdade.
+    // O helper test-app.helper mantém GoogleBooksService sincronizado,
+    // mas novos testes devem usar mockBooksService diretamente.
+    ctx.mockBooksService.searchBooks.mockResolvedValue([mockBook, mockBook2] as any);
+    ctx.mockBooksService.getBookById.mockImplementation((id: string) => {
+      if (id === mockBook.id) return Promise.resolve({ ...mockBook } as any);
+      if (id === mockBook2.id) return Promise.resolve({ ...mockBook2 } as any);
       throw new HttpException(`Livro com ID "${id}" não encontrado`, HttpStatus.NOT_FOUND);
     });
 
-    await createUser(app, userFixtures.john);
-    const tokens = await login(app, userFixtures.john.email, userFixtures.john.password);
+    const tokens = await createUserAndLogin(app, userFixtures.john);
     accessToken = tokens.accessToken;
+    refreshToken = tokens.refreshToken;
   });
 
   afterAll(async () => {
     await closeTestApp(ctx);
   });
+
+  // helpers locais para DRY
+  const search = (q: string, token = accessToken, extra = '') =>
+    request(app.getHttpServer())
+      .get(`/api/books/search?q=${encodeURIComponent(q)}${extra}`)
+      .set(authHeader(token));
+
+  const getById = (id: string, token?: string) => {
+    const req = request(app.getHttpServer()).get(`/api/books/${id}`);
+    if (token) req.set(authHeader(token));
+    return req;
+  };
 
   describe('GET /api/books/search', () => {
     it('deve retornar 401 sem token', async () => {
@@ -40,148 +57,119 @@ describe('Books (e2e)', () => {
     });
 
     it('deve retornar 401 com refresh token', async () => {
-      const refresh = (await login(app, userFixtures.john.email, userFixtures.john.password)).refreshToken;
-      await request(app.getHttpServer())
-        .get('/api/books/search?q=Harry')
-        .set('Authorization', `Bearer ${refresh}`)
-        .expect(401);
+      await search('Harry', refreshToken).expect(401);
     });
 
     it('deve buscar livros com query e retornar lista mapeada', async () => {
-      ctx.mockGoogleBooksService.searchBooks.mockResolvedValue([mockBook]);
+      ctx.mockBooksService.searchBooks.mockResolvedValue([mockBook] as any);
 
-      const res = await request(app.getHttpServer())
-        .get('/api/books/search?q=Harry+Potter')
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200);
+      const res = await search('Harry Potter').expect(200);
 
       expect(Array.isArray(res.body)).toBe(true);
       expect(res.body).toHaveLength(1);
-      expect(res.body[0]).toHaveProperty('id', mockBook.id);
-      expect(res.body[0]).toHaveProperty('title', mockBook.title);
-      expect(res.body[0]).toHaveProperty('authors', mockBook.authors);
-      expect(ctx.mockGoogleBooksService.searchBooks).toHaveBeenCalledWith('Harry Potter', expect.objectContaining({ q: 'Harry Potter' }));
+      expect(res.body[0]).toMatchObject({
+        id: mockBook.id,
+        title: mockBook.title,
+        authors: mockBook.authors,
+      });
+      expect(ctx.mockBooksService.searchBooks).toHaveBeenCalledWith(
+        'Harry Potter',
+        expect.objectContaining({ q: 'Harry Potter' }),
+      );
     });
 
     it('deve retornar array vazio quando nenhum livro encontrado', async () => {
-      ctx.mockGoogleBooksService.searchBooks.mockResolvedValue([]);
+      ctx.mockBooksService.searchBooks.mockResolvedValue([]);
 
-      const res = await request(app.getHttpServer())
-        .get('/api/books/search?q=nonexistent')
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200);
-
+      const res = await search('nonexistent').expect(200);
       expect(res.body).toEqual([]);
     });
 
     it('deve lidar com múltiplos livros', async () => {
-      ctx.mockGoogleBooksService.searchBooks.mockResolvedValue([mockBook, mockBook2]);
+      ctx.mockBooksService.searchBooks.mockResolvedValue([mockBook, mockBook2] as any);
 
-      const res = await request(app.getHttpServer())
-        .get('/api/books/search?q=test')
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200);
+      const res = await search('test').expect(200);
 
       expect(res.body).toHaveLength(2);
       expect(res.body[1].id).toBe(mockBook2.id);
     });
 
-    it('deve repassar erro da GoogleBooksService como BAD_GATEWAY', async () => {
-      ctx.mockGoogleBooksService.searchBooks.mockRejectedValue(
+    it('deve repassar erro da camada de livros como BAD_GATEWAY', async () => {
+      ctx.mockBooksService.searchBooks.mockRejectedValue(
         new HttpException('Erro ao buscar livros na Google Books API', HttpStatus.BAD_GATEWAY),
       );
 
-      await request(app.getHttpServer())
-        .get('/api/books/search?q=error')
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(502);
+      await search('error').expect(502);
     });
 
-    it('deve passar query exata para o service', async () => {
-      await request(app.getHttpServer())
-        .get('/api/books/search?q=C%2B%2B%20Programming')
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200);
+    it('deve passar query exata para o service (decode)', async () => {
+      await search('C++ Programming').expect(200);
 
-      expect(ctx.mockGoogleBooksService.searchBooks).toHaveBeenCalledWith('C++ Programming', expect.objectContaining({ q: 'C++ Programming' }));
+      expect(ctx.mockBooksService.searchBooks).toHaveBeenCalledWith(
+        'C++ Programming',
+        expect.objectContaining({ q: 'C++ Programming' }),
+      );
     });
 
     it('deve lidar com query vazia', async () => {
-      ctx.mockGoogleBooksService.searchBooks.mockResolvedValue([]);
-
-      const res = await request(app.getHttpServer())
-        .get('/api/books/search?q=')
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200);
-
+      ctx.mockBooksService.searchBooks.mockResolvedValue([]);
+      const res = await search('').expect(200);
       expect(Array.isArray(res.body)).toBe(true);
     });
 
-    it('deve paginar via page e limit (startIndex)', async () => {
-      ctx.mockGoogleBooksService.searchBooks.mockResolvedValue([mockBook]);
+    it('deve paginar via page e limit', async () => {
+      ctx.mockBooksService.searchBooks.mockResolvedValue([mockBook] as any);
 
       await request(app.getHttpServer())
         .get('/api/books/search?q=test&page=2&limit=5')
-        .set('Authorization', `Bearer ${accessToken}`)
+        .set(authHeader(accessToken))
         .expect(200);
 
-      expect(ctx.mockGoogleBooksService.searchBooks).toHaveBeenCalledWith('test', expect.objectContaining({ page: 2, limit: 5, q: 'test' }));
-      // Verifica que service foi chamado com startIndex correto (page 2, limit 5 => startIndex 5)
-      const call = ctx.mockGoogleBooksService.searchBooks.mock.calls.find((c: any[]) => c[0] === 'test' && c[1].page === 2);
+      expect(ctx.mockBooksService.searchBooks).toHaveBeenCalledWith(
+        'test',
+        expect.objectContaining({ page: 2, limit: 5, q: 'test' }),
+      );
+      const call = ctx.mockBooksService.searchBooks.mock.calls.find((c: any[]) => c[0] === 'test' && c[1].page === 2);
       expect(call).toBeDefined();
     });
 
     it('deve retornar 400 quando limit excede max', async () => {
       await request(app.getHttpServer())
         .get('/api/books/search?q=test&limit=100')
-        .set('Authorization', `Bearer ${accessToken}`)
+        .set(authHeader(accessToken))
         .expect(400);
     });
   });
 
-  describe('GET /api/books/:googleBookId', () => {
+  describe('GET /api/books/:bookId', () => {
     it('deve retornar 401 sem token', async () => {
-      await request(app.getHttpServer()).get(`/api/books/${mockBook.id}`).expect(401);
+      await getById(mockBook.id).expect(401);
     });
 
     it('deve retornar detalhes do livro por id', async () => {
-      const res = await request(app.getHttpServer())
-        .get(`/api/books/${mockBook.id}`)
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200);
+      const res = await getById(mockBook.id, accessToken).expect(200);
 
-      expect(res.body).toHaveProperty('id', mockBook.id);
-      expect(res.body).toHaveProperty('title', mockBook.title);
-      expect(ctx.mockGoogleBooksService.getBookById).toHaveBeenCalledWith(mockBook.id);
+      expect(res.body).toMatchObject({ id: mockBook.id, title: mockBook.title });
+      expect(ctx.mockBooksService.getBookById).toHaveBeenCalledWith(mockBook.id);
     });
 
     it('deve retornar 404 quando livro não encontrado', async () => {
-      const res = await request(app.getHttpServer())
-        .get('/api/books/invalid-id-123')
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(404);
-
+      const res = await getById('invalid-id-123', accessToken).expect(404);
       expect(res.body.message).toMatch(/não encontrado/i);
     });
 
-    it('deve lidar com diferentes formatos de googleBookId', async () => {
-      await request(app.getHttpServer())
-        .get('/api/books/zyTCAlFPjgYC')
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200);
-
-      expect(ctx.mockGoogleBooksService.getBookById).toHaveBeenCalledWith('zyTCAlFPjgYC');
+    it('deve lidar com diferentes formatos de bookId', async () => {
+      await getById('zyTCAlFPjgYC', accessToken).expect(200);
+      expect(ctx.mockBooksService.getBookById).toHaveBeenCalledWith('zyTCAlFPjgYC');
     });
 
     it('deve propagar detalhes do livro corretamente (thumbnail, pageCount)', async () => {
-      const res = await request(app.getHttpServer())
-        .get(`/api/books/${mockBook.id}`)
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200);
-
-      expect(res.body.thumbnail).toBe(mockBook.thumbnail);
-      expect(res.body.pageCount).toBe(mockBook.pageCount);
-      expect(res.body.publishedDate).toBe(mockBook.publishedDate);
+      const res = await getById(mockBook.id, accessToken).expect(200);
+      expect(res.body).toMatchObject({
+        thumbnail: mockBook.thumbnail,
+        pageCount: mockBook.pageCount,
+        publishedDate: mockBook.publishedDate,
+      });
     });
   });
 });
